@@ -15,7 +15,7 @@ The bootstrap owns `src/PuduLangValidator/**`, `src/Main.pudu`, their mirrors, p
 
 ## Exact next action
 
-Finish the public rule engine, validate it under Pudu 0.1.2, and reconcile mirrors with the compiled behavior.
+Carry immutable context through async validation on issue #3, test selection and lifted rules, then review source parity before integration into `dev`.
 
 ## Referenced by
 
