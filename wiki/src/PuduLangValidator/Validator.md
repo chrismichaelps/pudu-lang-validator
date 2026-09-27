@@ -11,6 +11,8 @@ path: src/PuduLangValidator/Validator.pudu
 
 ## Algorithm and edge cases
 
+Rule reachability uses [[Selection]] for exact paths, ancestors, descendants, and empty bracket index patterns.
+
 Ancestor paths are admitted for child traversal. Ordinary property rules skip when the selected path names only a descendant.
 
 Run preflight first; `Some(failures)` returns immediately, including when the array is empty. `None` continues. Then run rules in insertion order. Default validation runs only untagged rules. A named-rule-set selection runs tagged rules and may also include untagged rules explicitly. A wildcard includes every named set. Child container rules advertise their children's tags so they run when a selected child set is present. Property selection admits exact names, descendants at a dot or bracket boundary, and ancestors needed to reach selected children. An empty selection array means all properties. Inclusion appends rules and preserves their own tags. A validator with no rules is valid.

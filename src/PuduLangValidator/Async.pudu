@@ -2,9 +2,9 @@
 module PuduLangValidator.Async
 
 import Std.List as List
-import Std.Text as Text
 import PuduLangValidator.Result as Validation
 import PuduLangValidator.Rule as Rule
+import PuduLangValidator.Selection as Selection
 import PuduLangValidator.Validator as Validator
 
 /** @Validation.Async.Rule — owns one asynchronous source check */
@@ -33,8 +33,7 @@ export fn mustAsyncWithContext[T, V](
   message: Str, code: Str
 ) -> AsyncRule[T] {
   AsyncRule{name: name, ruleSets: [], run: async fn(root: T, options: Validator.Options, data: Rule.ContextData) -> Array[Validation.Failure] {
-      if !options.properties.isEmpty() && !List.any(&options.properties, |wanted: Str|
-        wanted == name || name.startsWith(wanted + ".") || name.startsWith(wanted + "[")) { return [] }
+      if !options.properties.isEmpty() && !List.any(&options.properties, |wanted: Str| Selection.covers(wanted, name)) { return [] }
       let value = select(root)
       if test(root, value, data).await { [] } else { [Validation.Failure {
             propertyName: name,
@@ -75,7 +74,7 @@ export fn forEachWhereAsyncWithContext[T, V](
       var index = 0
       for item in select(root) {
         let path = name + "[" + show(index) + "]"
-        if selectedElement(name, path, &options.properties) && keep(item, data).await && !test(root, item, data).await {
+        if selectedScalarElement(path, &options.properties) && keep(item, data).await && !test(root, item, data).await {
           failures = failures.push(Validation.Failure {
               propertyName: path,
               errorMessage: message.replace("\{PropertyName\}", name)
@@ -184,7 +183,7 @@ export fn forEachValidatorAsync[T, V](
       var index = 0
       for value in select(root) {
         let path = name + "[" + show(index) + "]"
-        if selectedElement(name, path, &options.properties) {
+        if selectedElement(path, &options.properties) {
           let inner = Validator.Options{..options, properties: childProperties(path, &options.properties)}
           for failure in prefixFailures(path, &validateAsyncWithData(&child, value, inner, data).await.errors) {
             failures = failures.push(failure)
@@ -237,10 +236,13 @@ export async fn validateAsyncWithData[T](
 }
 
 /// Whether an indexed element is part of property selection.
-fn selectedElement(name: Str, path: Str, properties: &Array[Str]) -> Bool {
-  properties.isEmpty() || List.any(properties, |wanted: Str|
-    wanted == name || wanted == path || wanted.startsWith(path + ".") ||
-    name.startsWith(wanted + ".") || name.startsWith(wanted + "["))
+fn selectedElement(path: Str, properties: &Array[Str]) -> Bool {
+  properties.isEmpty() || List.any(properties, |wanted: Str| Selection.overlaps(wanted, path))
+}
+
+/// Whether a requested path selects this scalar array element.
+fn selectedScalarElement(path: Str, properties: &Array[Str]) -> Bool {
+  properties.isEmpty() || List.any(properties, |wanted: Str| Selection.covers(wanted, path))
 }
 
 /// Rule-set tags visible through a nested async validator.
@@ -260,8 +262,8 @@ fn childProperties(name: Str, properties: &Array[Str]) -> Array[Str] {
   if name.isEmpty() { return *properties }
   var selected: Array[Str] = []
   for wanted in *properties {
-    if wanted == name || name.startsWith(wanted + ".") || name.startsWith(wanted + "[") { return [] }
-    if wanted.startsWith(name + ".") { selected = selected.push(Text.drop(wanted, name.length() + 1)) }
+    if Selection.covers(wanted, name) { return [] }
+    if let Some(relative) = Selection.relative(wanted, name) { selected = selected.push(relative) }
   }
   selected
 }

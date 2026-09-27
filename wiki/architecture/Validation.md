@@ -24,6 +24,7 @@ The API uses Pudu module functions and immutable builders. `Option[T]` expresses
 - Rule cascade stops later checks in that rule; validator cascade stops later rules.
 - Default selection runs unnamed rules. Named selection runs matching rules and can include unnamed rules explicitly. All selection runs every rule.
 - Property selection compares the declared path and nested prefixes.
+- An empty bracket in a requested path selects each concrete index at that level.
 - Validation does not mutate its validator or input.
 - Context data is passed through root, child, and collection validation without mutation.
 

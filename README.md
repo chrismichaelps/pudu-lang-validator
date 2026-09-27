@@ -67,6 +67,8 @@ The manifest identifies this package as `@chrismichaelps/pudu-lang-validator`. I
 
 Rule sets, property selection, cascade behavior, conditions, nested paths, collection filters, context data, severity, codes, and custom state are covered by the package tests. The [source mirrors](wiki/src/_MOC.md) describe each module's contract.
 
+Use `Validator.includeProperties(Validator.defaults(), ["orders[].sku"])` to validate one field across every item in a collection. Concrete indices, including nested indices, remain in failure paths.
+
 ## Developing
 
 ```sh

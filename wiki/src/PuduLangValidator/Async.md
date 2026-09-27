@@ -16,6 +16,8 @@ path: src/PuduLangValidator/Async.pudu
 
 ## Algorithm and edge cases
 
+Async root and child rules use [[Selection]] for the same path relations as synchronous validation.
+
 Selection runs once for an async rule. A false predicate emits one failure with the supplied path, message, and code. Array checks and filters are awaited in source order and retain original indices; unselected indices are skipped. Rules are awaited sequentially so failure order matches declaration order. `stopOnFirst` ends after the first failing rule. A rule's awaited work is cold until validation begins.
 
 A scalar async rule skips itself when only a descendant path is selected. Decorators preserve the context data unchanged; lifted rules receive the same data as native async rules.

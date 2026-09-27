@@ -4,6 +4,7 @@ module PuduLangValidator.Validator
 import Std.List as List
 import PuduLangValidator.Result as Validation
 import PuduLangValidator.Rule as Rule
+import PuduLangValidator.Selection as Selection
 
 /** @Validation.Validator.Options — selects named rule subsets */
 export type Options = { properties: Array[Str], ruleSets: Array[Str], includeDefault: Bool }
@@ -98,9 +99,7 @@ export fn accepts(path: Str, ruleSets: &Array[Str], options: &Options) -> Bool {
   let pathAllowed = if options.properties.isEmpty() {
     true
   } else {
-    List.any(&options.properties, |name: Str|
-      path == name || path.startsWith(name + ".") || path.startsWith(name + "[") ||
-      name.startsWith(path + ".") || name.startsWith(path + "["))
+    List.any(&options.properties, |name: Str| Selection.overlaps(name, path))
   }
   let setAllowed = if ruleSets.isEmpty() {
     options.includeDefault

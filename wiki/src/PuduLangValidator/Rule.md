@@ -11,6 +11,8 @@ path: src/PuduLangValidator/Rule.pudu
 
 ## Algorithm and edge cases
 
+Scalar property selection uses [[Selection]] so empty bracket patterns match concrete indices without admitting a descendant-only request.
+
 Scalar property rules skip when selection targets only one of their descendants; child rules can still traverse to that path.
 
 Selection runs once per rule. Checks run in declaration order; false predicates emit one failure. Conditions compose with existing conditions by conjunction. `stopOnFirst` stops after the first emitted failure. Metadata calls on an empty builder are no-ops; this keeps constructors total. The failure path is explicit, not inferred from the selector. Message templates replace `{PropertyName}`, `{PropertyPath}`, and `{PropertyValue}` after a check fails. A message factory runs only for a failed check, allowing a caller to select text by locale or source data. A built rule receives selected rule sets, default-rule inclusion, selected property paths, and immutable root context data so child and collection rules can inherit them.

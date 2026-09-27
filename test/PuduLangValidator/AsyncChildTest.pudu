@@ -46,6 +46,8 @@ async fn main() -> Int {
   let defaultResult = Async.validateAsyncWithData(&validator, root, Validator.defaults(), data).await
   let selected = Async.validateAsyncWithData(&validator, root,
     Validator.includeProperties(Validator.defaults(), ["items[1].code"]), data).await
+  let allCodes = Async.validateAsyncWithData(&validator, root,
+    Validator.includeProperties(Validator.defaults(), ["items[].code"]), data).await
   let dotted = Async.add(Async.create(),
     Async.forEachValidatorAsync("group.items", |value: Root| value.items, childRules()))
   let parentSelected = Async.validateAsyncWithData(&dotted, root,
@@ -69,6 +71,8 @@ async fn main() -> Int {
           &["child.code", "items[0].code", "items[1].code"]),
       Test.equals("one indexed property reaches one child", &selected.errors.map(|failure: Validation.Failure| failure.propertyName),
           &["items[1].code"]),
+      Test.equals("empty index selects each async child field", &allCodes.errors.map(|failure: Validation.Failure| failure.propertyName),
+          &["items[0].code", "items[1].code"]),
       Test.equals("parent selection reaches dotted collection", &parentSelected.errors.map(|failure: Validation.Failure| failure.propertyName),
           &["group.items[0].code", "group.items[1].code"]),
       Test.equals("named set reaches nested children", &shipping.errors.map(|failure: Validation.Failure| failure.propertyName),

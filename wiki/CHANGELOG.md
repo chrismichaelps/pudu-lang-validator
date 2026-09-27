@@ -6,3 +6,4 @@
 - 2026-09-27 — Render built-in bounds and keep nested selection from running parent scalar checks.
 - 2026-09-27 — Extend asynchronous rules with immutable root context and scalar path selection.
 - 2026-09-27 — Add nested asynchronous composition and awaited conditions.
+- 2026-09-27 — Unify concrete and wildcard property path selection across root and nested rules.

@@ -1,0 +1,22 @@
+/** @Test.Validation.Selection.Suite — checks segment and wildcard path relations */
+module PuduLangValidator.SelectionTest
+
+import Std.Test as Test
+import PuduLangValidator.Selection as Selection
+
+fn main() -> Int {
+  let checks = Test.suite("Selection", &[
+      Test.equals("empty bracket selects a concrete index", &Selection.covers("items[].code", "items[0].code"), &true),
+      Test.equals("custom bracket keys are selectable", &Selection.covers("items[].code", "items[at-1].code"), &true),
+      Test.equals("nested wildcards consume separate indices", &Selection.covers("orders[].lines[].price", "orders[0].lines[2].price"), &true),
+      Test.equals("plain prefix is not an ancestor", &Selection.overlaps("item", "items[0]"), &false),
+      Test.equals("descendant request does not cover a scalar parent", &Selection.covers("items[].code", "items[0]"), &false),
+      Test.equals("ancestor rule reaches wildcard request", &Selection.overlaps("items[].code", "items"), &true),
+      Test.equals("wildcard cannot match empty bracket", &Selection.covers("items[]", "items[]"), &false),
+      Test.equals("different property remains separate", &Selection.covers("items[].code", "items[2].zip"), &false),
+      Test.equals("one child prefix leaves its field", &Selection.relative("items[].code", "items[2]"), &Some("code")),
+      Test.equals("nested prefix leaves another wildcard", &Selection.relative("orders[].lines[].price", "orders[1]"), &Some("lines[].price")),
+      Test.equals("nested concrete prefix leaves its field", &Selection.relative("orders[].lines[].price", "orders[1].lines[3]"), &Some("price"))
+    ])
+  Test.report(&Test.run(&checks))
+}
