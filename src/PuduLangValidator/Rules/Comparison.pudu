@@ -6,14 +6,14 @@ import PuduLangValidator.Rule as Rule
 
 /// Require equality with a fixed value.
 export fn equal[T, V: Eq](builder: Rule.RuleBuilder[T, V], expected: V) -> Rule.RuleBuilder[T, V] {
-  Rule.withCode(Rule.withMessage(Rule.must(builder, |value: V| value == expected),
-      "Value must equal the expected value."), "Equal")
+  Rule.withArgument(Rule.withCode(Rule.withMessage(Rule.must(builder, |value: V| value == expected),
+        "Value must equal \{ComparisonValue\}."), "Equal"), "ComparisonValue", expected.toText())
 }
 
 /// Require inequality with a fixed value.
 export fn notEqual[T, V: Eq](builder: Rule.RuleBuilder[T, V], excluded: V) -> Rule.RuleBuilder[T, V] {
-  Rule.withCode(Rule.withMessage(Rule.must(builder, |value: V| value != excluded),
-      "Value must differ from the excluded value."), "NotEqual")
+  Rule.withArgument(Rule.withCode(Rule.withMessage(Rule.must(builder, |value: V| value != excluded),
+        "Value must differ from \{ComparisonValue\}."), "NotEqual"), "ComparisonValue", excluded.toText())
 }
 
 /// Require membership in an explicitly supplied set of values.

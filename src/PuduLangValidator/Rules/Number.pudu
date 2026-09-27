@@ -5,50 +5,52 @@ import PuduLangValidator.Rule as Rule
 
 /// Require a value greater than the bound.
 export fn greaterThan[T](builder: Rule.RuleBuilder[T, Int], bound: Int) -> Rule.RuleBuilder[T, Int] {
-  Rule.withCode(Rule.withMessageFrom(Rule.must(builder, |value: Int| value > bound),
-      fn(_root: T, _value: Int) -> Str { "Number must be greater than " + show(bound) + "." }), "GreaterThan")
+  Rule.withArgument(Rule.withCode(Rule.withMessage(Rule.must(builder, |value: Int| value > bound),
+        "Number must be greater than \{ComparisonValue\}."), "GreaterThan"), "ComparisonValue", show(bound))
 }
 
 /// Require a value at least as large as the bound.
 export fn greaterThanOrEqualTo[T](builder: Rule.RuleBuilder[T, Int], bound: Int) -> Rule.RuleBuilder[T, Int] {
-  Rule.withCode(Rule.withMessageFrom(Rule.must(builder, |value: Int| value >= bound),
-      fn(_root: T, _value: Int) -> Str { "Number must be at least " + show(bound) + "." }), "GreaterThanOrEqualTo")
+  Rule.withArgument(Rule.withCode(Rule.withMessage(Rule.must(builder, |value: Int| value >= bound),
+        "Number must be at least \{ComparisonValue\}."), "GreaterThanOrEqualTo"), "ComparisonValue", show(bound))
 }
 
 /// Require a value below the bound.
 export fn lessThan[T](builder: Rule.RuleBuilder[T, Int], bound: Int) -> Rule.RuleBuilder[T, Int] {
-  Rule.withCode(Rule.withMessageFrom(Rule.must(builder, |value: Int| value < bound),
-      fn(_root: T, _value: Int) -> Str { "Number must be less than " + show(bound) + "." }), "LessThan")
+  Rule.withArgument(Rule.withCode(Rule.withMessage(Rule.must(builder, |value: Int| value < bound),
+        "Number must be less than \{ComparisonValue\}."), "LessThan"), "ComparisonValue", show(bound))
 }
 
 /// Require a value no larger than the bound.
 export fn lessThanOrEqualTo[T](builder: Rule.RuleBuilder[T, Int], bound: Int) -> Rule.RuleBuilder[T, Int] {
-  Rule.withCode(Rule.withMessageFrom(Rule.must(builder, |value: Int| value <= bound),
-      fn(_root: T, _value: Int) -> Str { "Number must be at most " + show(bound) + "." }), "LessThanOrEqualTo")
+  Rule.withArgument(Rule.withCode(Rule.withMessage(Rule.must(builder, |value: Int| value <= bound),
+        "Number must be at most \{ComparisonValue\}."), "LessThanOrEqualTo"), "ComparisonValue", show(bound))
 }
 
 /// Require a value within inclusive bounds.
 export fn inclusiveBetween[T](builder: Rule.RuleBuilder[T, Int], low: Int, high: Int) -> Rule.RuleBuilder[T, Int] {
-  Rule.withCode(Rule.withMessageFrom(Rule.must(builder, |value: Int| value >= low && value <= high),
-      fn(_root: T, _value: Int) -> Str { "Number must be from " + show(low) + " through " + show(high) + "." }), "InclusiveBetween")
+  let checked = Rule.withCode(Rule.withMessage(Rule.must(builder, |value: Int| value >= low && value <= high),
+      "Number must be from \{From\} through \{To\}."), "InclusiveBetween")
+  Rule.withArgument(Rule.withArgument(checked, "From", show(low)), "To", show(high))
 }
 
 /// Require a value strictly inside the bounds.
 export fn exclusiveBetween[T](builder: Rule.RuleBuilder[T, Int], low: Int, high: Int) -> Rule.RuleBuilder[T, Int] {
-  Rule.withCode(Rule.withMessageFrom(Rule.must(builder, |value: Int| value > low && value < high),
-      fn(_root: T, _value: Int) -> Str { "Number must be between " + show(low) + " and " + show(high) + ", excluding both." }), "ExclusiveBetween")
+  let checked = Rule.withCode(Rule.withMessage(Rule.must(builder, |value: Int| value > low && value < high),
+      "Number must be between \{From\} and \{To\}, excluding both."), "ExclusiveBetween")
+  Rule.withArgument(Rule.withArgument(checked, "From", show(low)), "To", show(high))
 }
 
 /// Require a value equal to the expected integer.
 export fn equal[T](builder: Rule.RuleBuilder[T, Int], expected: Int) -> Rule.RuleBuilder[T, Int] {
-  Rule.withCode(Rule.withMessageFrom(Rule.must(builder, |value: Int| value == expected),
-      fn(_root: T, _value: Int) -> Str { "Number must equal " + show(expected) + "." }), "Equal")
+  Rule.withArgument(Rule.withCode(Rule.withMessage(Rule.must(builder, |value: Int| value == expected),
+        "Number must equal \{ComparisonValue\}."), "Equal"), "ComparisonValue", show(expected))
 }
 
 /// Require a value different from the excluded integer.
 export fn notEqual[T](builder: Rule.RuleBuilder[T, Int], excluded: Int) -> Rule.RuleBuilder[T, Int] {
-  Rule.withCode(Rule.withMessageFrom(Rule.must(builder, |value: Int| value != excluded),
-      fn(_root: T, _value: Int) -> Str { "Number must differ from " + show(excluded) + "." }), "NotEqual")
+  Rule.withArgument(Rule.withCode(Rule.withMessage(Rule.must(builder, |value: Int| value != excluded),
+        "Number must differ from \{ComparisonValue\}."), "NotEqual"), "ComparisonValue", show(excluded))
 }
 
 /// Reject the integer default value of zero.

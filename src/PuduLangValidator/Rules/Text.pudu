@@ -19,22 +19,28 @@ export fn empty[T](builder: Rule.RuleBuilder[T, Str]) -> Rule.RuleBuilder[T, Str
 
 /// Require a Unicode-scalar length within inclusive bounds.
 export fn length[T](builder: Rule.RuleBuilder[T, Str], minimum: Int, maximum: Int) -> Rule.RuleBuilder[T, Str] {
-  Rule.withCode(Rule.withMessageFrom(
+  let checked = Rule.withCode(Rule.withMessage(
       Rule.must(builder, |value: Str| value.length() >= minimum && value.length() <= maximum),
-      fn(_root: T, _value: Str) -> Str { "Text must contain between " + show(minimum) + " and " + show(maximum) + " characters." }
+      "Text must contain between \{MinLength\} and \{MaxLength\} characters."
     ), "Length")
+  let bounded = Rule.withArgument(Rule.withArgument(checked, "MinLength", show(minimum)), "MaxLength", show(maximum))
+  Rule.withArgumentFrom(bounded, "TotalLength", fn(_root: T, value: Str) -> Str { show(value.length()) })
 }
 
 /// Require at least the stated number of Unicode scalars.
 export fn minimumLength[T](builder: Rule.RuleBuilder[T, Str], minimum: Int) -> Rule.RuleBuilder[T, Str] {
-  Rule.withCode(Rule.withMessageFrom(Rule.must(builder, |value: Str| value.length() >= minimum),
-      fn(_root: T, _value: Str) -> Str { "Text must contain at least " + show(minimum) + " characters." }), "MinimumLength")
+  let checked = Rule.withCode(Rule.withMessage(Rule.must(builder, |value: Str| value.length() >= minimum),
+      "Text must contain at least \{MinLength\} characters."), "MinimumLength")
+  Rule.withArgumentFrom(Rule.withArgument(checked, "MinLength", show(minimum)),
+    "TotalLength", fn(_root: T, value: Str) -> Str { show(value.length()) })
 }
 
 /// Require no more than the stated number of Unicode scalars.
 export fn maximumLength[T](builder: Rule.RuleBuilder[T, Str], maximum: Int) -> Rule.RuleBuilder[T, Str] {
-  Rule.withCode(Rule.withMessageFrom(Rule.must(builder, |value: Str| value.length() <= maximum),
-      fn(_root: T, _value: Str) -> Str { "Text must contain no more than " + show(maximum) + " characters." }), "MaximumLength")
+  let checked = Rule.withCode(Rule.withMessage(Rule.must(builder, |value: Str| value.length() <= maximum),
+      "Text must contain no more than \{MaxLength\} characters."), "MaximumLength")
+  Rule.withArgumentFrom(Rule.withArgument(checked, "MaxLength", show(maximum)),
+    "TotalLength", fn(_root: T, value: Str) -> Str { show(value.length()) })
 }
 
 /// Require exactly one internal `@`; this checks shape, not delivery.

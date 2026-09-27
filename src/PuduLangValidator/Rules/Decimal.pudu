@@ -11,11 +11,19 @@ type Shape = { precision: Int, scale: Int }
 export fn precisionScale[T](
   builder: Rule.RuleBuilder[T, Decimal], precision: Int, scale: Int, ignoreTrailingZeros: Bool
 ) -> Rule.RuleBuilder[T, Decimal] {
-  Rule.withCode(Rule.withMessage(Rule.must(builder, |value: Decimal| {
+  let checked = Rule.withCode(Rule.withMessage(Rule.must(builder, |value: Decimal| {
           let actual = shape(value, ignoreTrailingZeros)
           precision >= 1 && scale >= 0 && scale <= precision &&
           actual.precision <= precision && actual.scale <= scale
-        }), "Decimal exceeds the allowed precision or scale."), "PrecisionScale")
+        }), "Decimal must fit \{ExpectedPrecision\} digits with at most \{ExpectedScale\} after the point."), "PrecisionScale")
+  let expected = Rule.withArgument(Rule.withArgument(checked, "ExpectedPrecision", show(precision)),
+    "ExpectedScale", show(scale))
+  let digits = Rule.withArgumentFrom(expected, "Digits", fn(_root: T, value: Decimal) -> Str {
+      show(shape(value, ignoreTrailingZeros).precision)
+    })
+  Rule.withArgumentFrom(digits, "ActualScale", fn(_root: T, value: Decimal) -> Str {
+      show(shape(value, ignoreTrailingZeros).scale)
+    })
 }
 
 /// Count significant integer digits and retained fractional digits.

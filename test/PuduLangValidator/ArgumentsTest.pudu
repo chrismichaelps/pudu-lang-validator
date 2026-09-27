@@ -1,0 +1,97 @@
+/** @Test.Validation.Arguments.Suite — checks failure message values */
+module PuduLangValidator.ArgumentsTest
+
+import Std.Test as Test
+import PuduLangValidator.Rule as Rule
+import PuduLangValidator.Rules.Collection as Collection
+import PuduLangValidator.Rules.Comparison as Comparison
+import PuduLangValidator.Rules.Decimal as DecimalRule
+import PuduLangValidator.Rules.Number as Number
+import PuduLangValidator.Rules.Ordering as Ordering
+import PuduLangValidator.Rules.Text as Text
+import PuduLangValidator.Validator as Validator
+
+type Sample = { text: Str, number: Int, lines: Array[Str], amount: Decimal }
+
+fn textRules() -> Validator.Validator[Sample] {
+  let length = Text.length(Rule.ruleFor("text", |sample: Sample| sample.text), 2, 4)
+  let named = Rule.withMessage(length, "\{PropertyName\}: \{MinLength\}-\{MaxLength\}; got \{TotalLength\}.")
+  Validator.add(Validator.create(), Rule.build(named))
+}
+
+fn numberRules() -> Validator.Validator[Sample] {
+  let comparison = Rule.withMessage(Number.greaterThan(Rule.ruleFor("number", |sample: Sample| sample.number), 5),
+    "Compare \{ComparisonValue\}.")
+  let bounded = Number.inclusiveBetween(comparison, 2, 7)
+  let first = Rule.withMessage(bounded, "Outside \{From\}..\{To\}.")
+  Validator.add(Validator.create(), Rule.build(first))
+}
+
+fn collectionRules() -> Validator.Validator[Sample] {
+  let count = Collection.countBetween(Rule.ruleFor("lines", |sample: Sample| sample.lines), 1, 2)
+  let named = Rule.withMessage(count, "\{TotalCount\} items; expected \{From\}..\{To\}.")
+  Validator.add(Validator.create(), Rule.build(named))
+}
+
+fn decimalRules() -> Validator.Validator[Sample] {
+  let precision = DecimalRule.precisionScale(Rule.ruleFor("amount", |sample: Sample| sample.amount), 3, 1, false)
+  let named = Rule.withMessage(precision, "\{Digits\}/\{ActualScale\} exceeds \{ExpectedPrecision\}/\{ExpectedScale\}.")
+  Validator.add(Validator.create(), Rule.build(named))
+}
+
+fn customRules() -> Validator.Validator[Sample] {
+  let firstBase = Rule.withArgument(Rule.withMessage(Rule.must(
+        Rule.ruleFor("number", |sample: Sample| sample.number), |_value: Int| false
+      ), "First \{Tag\} \{PropertyName\}."), "Tag", "one")
+  let first = Rule.withArgument(firstBase, "PropertyName", "ignored")
+  let secondBase = Rule.must(first, |_value: Int| false)
+  let secondMessage = Rule.withMessage(secondBase, "Second \{Tag\} \{Actual\}.")
+  let secondTagged = Rule.withArgument(Rule.withArgument(secondMessage, "Tag", "old"), "Tag", "two")
+  let second = Rule.withArgumentFrom(secondTagged, "Actual", fn(root: Sample, value: Int) -> Str {
+      show(root.number + value)
+    })
+  Validator.add(Validator.create(), Rule.build(second))
+}
+
+fn literalRules() -> Validator.Validator[Sample] {
+  let initial = Rule.withMessage(Rule.must(Rule.ruleFor("text", |sample: Sample| sample.text),
+      |_value: Str| false), "A: \{A\}; value: \{PropertyValue\}.")
+  let first = Rule.withArgument(initial, "A", "\{B\}")
+  let second = Rule.withArgument(first, "B", "secret")
+  Validator.add(Validator.create(), Rule.build(second))
+}
+
+fn genericRules() -> Validator.Validator[Sample] {
+  let equal = Rule.build(Rule.withMessage(Comparison.equal(
+        Rule.ruleFor("number", |sample: Sample| sample.number), 4),
+      "Expected \{ComparisonValue\}."))
+  let between = Rule.build(Rule.withMessage(Ordering.exclusiveBetween(
+        Rule.ruleFor("number", |sample: Sample| sample.number), 1, 5),
+      "Strictly \{From\}..\{To\}."))
+  Validator.add(Validator.add(Validator.create(), equal), between)
+}
+
+fn main() -> Int {
+  let sample = Sample{text: "x", number: 9, lines: [], amount: 12.34d}
+  let text = Validator.validate(&textRules(), sample)
+  let numbers = Validator.validate(&numberRules(), sample)
+  let compared = Validator.validate(&numberRules(), Sample{..sample, number: 4})
+  let collection = Validator.validate(&collectionRules(), sample)
+  let decimal = Validator.validate(&decimalRules(), sample)
+  let custom = Validator.validate(&customRules(), sample)
+  let literal = Validator.validate(&literalRules(), Sample{..sample, text: "\{B\}"})
+  let generic = Validator.validate(&genericRules(), sample)
+  let checks = Test.suite("Arguments", &[
+      Test.equals("text bounds and measured length render", &text.errors[0].errorMessage, &"text: 2-4; got 1."),
+      Test.equals("interval bounds render", &numbers.errors[0].errorMessage, &"Outside 2..7."),
+      Test.equals("collection count and bounds render", &collection.errors[0].errorMessage, &"0 items; expected 1..2."),
+      Test.equals("decimal shape and bounds render", &decimal.errors[0].errorMessage, &"4/2 exceeds 3/1."),
+      Test.equals("arguments stay with their own checks", &custom.errors[0].errorMessage, &"First one number."),
+      Test.equals("latest argument replaces earlier value", &custom.errors[1].errorMessage, &"Second two 18."),
+      Test.equals("comparison argument is stored on first check", &compared.errors[0].errorMessage, &"Compare 5."),
+      Test.equals("argument and property values are inserted literally", &literal.errors[0].errorMessage, &"A: \{B\}; value: \{B\}."),
+      Test.equals("generic equality exposes its comparison value", &generic.errors[0].errorMessage, &"Expected 4."),
+      Test.equals("generic ordering exposes interval bounds", &generic.errors[1].errorMessage, &"Strictly 1..5.")
+    ])
+  Test.report(&Test.run(&checks))
+}

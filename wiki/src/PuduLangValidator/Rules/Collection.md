@@ -15,6 +15,8 @@ Element selection uses [[src/PuduLangValidator/Selection]] to match explicit and
 
 Count bounds are rendered into failure messages when a check fails.
 
+`countBetween` attaches `From`, `To`, and computed `TotalCount` arguments for caller messages.
+
 Each element is visited in ascending index order. Filtering preserves original indices. A simple element predicate yields one failure; an element builder may yield several in check order, unless stopped after the first failure. Selected indexed paths skip other elements. The element message may use `{CollectionIndex}` and `{PropertyPath}`. A custom indexer supplies the bracket content, while `{CollectionIndex}` stays the numeric source position. An empty array produces no element failures.
 
 ## Negative logic

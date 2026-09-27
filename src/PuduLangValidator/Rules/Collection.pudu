@@ -20,8 +20,10 @@ export fn empty[T, V](builder: Rule.RuleBuilder[T, Array[V]]) -> Rule.RuleBuilde
 
 /// Require an array count within inclusive bounds.
 export fn countBetween[T, V](builder: Rule.RuleBuilder[T, Array[V]], low: Int, high: Int) -> Rule.RuleBuilder[T, Array[V]] {
-  Rule.withCode(Rule.withMessageFrom(Rule.must(builder, |items: Array[V]| items.length() >= low && items.length() <= high),
-      fn(_root: T, _items: Array[V]) -> Str { "The collection must contain from " + show(low) + " through " + show(high) + " items." }), "CountBetween")
+  let checked = Rule.withCode(Rule.withMessage(Rule.must(builder, |items: Array[V]| items.length() >= low && items.length() <= high),
+      "The collection must contain from \{From\} through \{To\} items."), "CountBetween")
+  let bounded = Rule.withArgument(Rule.withArgument(checked, "From", show(low)), "To", show(high))
+  Rule.withArgumentFrom(bounded, "TotalCount", fn(_root: T, items: Array[V]) -> Str { show(items.length()) })
 }
 
 /// Apply one element predicate at every original array index.
