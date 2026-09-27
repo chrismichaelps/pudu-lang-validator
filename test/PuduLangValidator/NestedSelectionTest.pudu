@@ -1,0 +1,57 @@
+/** @Test.Validation.NestedSelection.Suite — checks child selection scope */
+module PuduLangValidator.NestedSelectionTest
+
+import Std.Test as Test
+import PuduLangValidator.Result as Validation
+import PuduLangValidator.Rule as Rule
+import PuduLangValidator.Rules.Child as Child
+import PuduLangValidator.Rules.Text as TextRule
+import PuduLangValidator.Validator as Validator
+
+type Address = { city: Str, zip: Str }
+type Order = { sku: Str, note: Str }
+type Customer = { address: Option[Address], orders: Array[Order] }
+
+fn addressRules() -> Validator.Validator[Address] {
+  let city = Rule.build(TextRule.notEmpty(Rule.ruleFor("city", |address: Address| address.city)))
+  let zip = Rule.build(Rule.inRuleSet(TextRule.notEmpty(Rule.ruleFor("zip", |address: Address| address.zip)), "shipping"))
+  Validator.add(Validator.add(Validator.create(), city), zip)
+}
+
+fn orderRules() -> Validator.Validator[Order] {
+  let sku = Rule.build(TextRule.notEmpty(Rule.ruleFor("sku", |order: Order| order.sku)))
+  let note = Rule.build(TextRule.notEmpty(Rule.ruleFor("note", |order: Order| order.note)))
+  Validator.add(Validator.add(Validator.create(), sku), note)
+}
+
+fn customerRules() -> Validator.Validator[Customer] {
+  let parent = Rule.build(Rule.withMessage(Rule.must(
+        Rule.ruleFor("address", |customer: Customer| customer.address),
+        |_value: Option[Address]| false
+      ), "Parent address failed."))
+  let address = Child.setOptionalValidator("address", |customer: Customer| customer.address, addressRules())
+  let orders = Child.forEachValidator("orders", |customer: Customer| customer.orders, orderRules())
+  Validator.add(Validator.add(Validator.add(Validator.create(), parent), address), orders)
+}
+
+fn main() -> Int {
+  let validator = customerRules()
+  let customer = Customer {
+    address: Some(Address{city: "", zip: ""}),
+    orders: [Order{sku: "", note: ""}, Order{sku: "", note: ""}]
+  }
+  let shipping = Validator.validateWith(&validator, customer, Validator.onlyRuleSets(["shipping"]))
+  let addressOnly = Validator.validateWith(&validator, customer,
+    Validator.includeProperties(Validator.allRuleSets(), ["address.zip"]))
+  let oneSku = Validator.validateWith(&validator, customer,
+    Validator.includeProperties(Validator.defaults(), ["orders[1].sku"]))
+  let checks = Test.suite("NestedSelection", &[
+      Test.equals("child rule set reaches named child", &shipping.errors.map(|failure: Validation.Failure| failure.propertyName),
+          &["address.zip"]),
+      Test.equals("nested property selection reaches one child field", &addressOnly.errors.map(|failure: Validation.Failure| failure.propertyName),
+          &["address.zip"]),
+      Test.equals("indexed property selection reaches one item and field", &oneSku.errors.map(|failure: Validation.Failure| failure.propertyName),
+          &["orders[1].sku"])
+    ])
+  Test.report(&Test.run(&checks))
+}

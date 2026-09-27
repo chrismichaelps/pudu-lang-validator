@@ -1,0 +1,41 @@
+/** @Validation.Rules.Ordering.Module — checks ordered property bounds */
+module PuduLangValidator.Rules.Ordering
+
+import Std.Order {Ord}
+import PuduLangValidator.Rule as Rule
+
+/// Require a property strictly after the bound.
+export fn greaterThan[T, V: Ord](builder: Rule.RuleBuilder[T, V], bound: V) -> Rule.RuleBuilder[T, V] {
+  Rule.withCode(Rule.withMessage(Rule.must(builder, |value: V| bound.before(&value)),
+      "Value must be greater than the bound."), "GreaterThan")
+}
+
+/// Require a property at or after the bound.
+export fn greaterThanOrEqualTo[T, V: Ord](builder: Rule.RuleBuilder[T, V], bound: V) -> Rule.RuleBuilder[T, V] {
+  Rule.withCode(Rule.withMessage(Rule.must(builder, |value: V| !value.before(&bound)),
+      "Value must be at least the bound."), "GreaterThanOrEqualTo")
+}
+
+/// Require a property strictly before the bound.
+export fn lessThan[T, V: Ord](builder: Rule.RuleBuilder[T, V], bound: V) -> Rule.RuleBuilder[T, V] {
+  Rule.withCode(Rule.withMessage(Rule.must(builder, |value: V| value.before(&bound)),
+      "Value must be less than the bound."), "LessThan")
+}
+
+/// Require a property at or before the bound.
+export fn lessThanOrEqualTo[T, V: Ord](builder: Rule.RuleBuilder[T, V], bound: V) -> Rule.RuleBuilder[T, V] {
+  Rule.withCode(Rule.withMessage(Rule.must(builder, |value: V| !bound.before(&value)),
+      "Value must be at most the bound."), "LessThanOrEqualTo")
+}
+
+/// Require a property from low through high, including endpoints.
+export fn inclusiveBetween[T, V: Ord](builder: Rule.RuleBuilder[T, V], low: V, high: V) -> Rule.RuleBuilder[T, V] {
+  Rule.withCode(Rule.withMessage(Rule.must(builder, |value: V| !value.before(&low) && !high.before(&value)),
+      "Value must be within the inclusive bounds."), "InclusiveBetween")
+}
+
+/// Require a property strictly between low and high.
+export fn exclusiveBetween[T, V: Ord](builder: Rule.RuleBuilder[T, V], low: V, high: V) -> Rule.RuleBuilder[T, V] {
+  Rule.withCode(Rule.withMessage(Rule.must(builder, |value: V| low.before(&value) && value.before(&high)),
+      "Value must be within the exclusive bounds."), "ExclusiveBetween")
+}

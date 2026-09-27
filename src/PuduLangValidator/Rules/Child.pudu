@@ -1,0 +1,94 @@
+/** @Validation.Rules.Child.Module — composes nested validator failures */
+module PuduLangValidator.Rules.Child
+
+import Std.Text as Text
+import PuduLangValidator.Result as Validation
+import PuduLangValidator.Rule as Rule
+import PuduLangValidator.Validator as Validator
+
+/// Run a child validator and prefix its failure paths.
+export fn setValidator[T, V](name: Str, select: fn(T) -> V, child: Validator.Validator[V]) -> Rule.Rule[T] {
+  let groups = childGroups(&child)
+  Rule.Rule{name: name, ruleSets: groups, run: fn(root: T, sets: Array[Str], includeDefault: Bool, properties: Array[Str], data: Rule.ContextData) -> Array[Validation.Failure] {
+      let options = Validator.Options{properties: requested(name, &properties), ruleSets: sets, includeDefault: includeDefault}
+      prefix(name, &Validator.validateWithData(&child, select(root), options, data).errors)
+    } }
+}
+
+/// Skip an absent child; presence can be checked by its own rule.
+export fn setOptionalValidator[T, V](
+  name: Str, select: fn(T) -> Option[V], child: Validator.Validator[V]
+) -> Rule.Rule[T] {
+  let groups = childGroups(&child)
+  Rule.Rule{name: name, ruleSets: groups, run: fn(root: T, sets: Array[Str], includeDefault: Bool, properties: Array[Str], data: Rule.ContextData) -> Array[Validation.Failure] {
+      match select(root) {
+        case Some(value) => {
+          let options = Validator.Options{properties: requested(name, &properties), ruleSets: sets, includeDefault: includeDefault}
+          prefix(name, &Validator.validateWithData(&child, value, options, data).errors)
+        }
+        case None => []
+      }
+    } }
+}
+
+/// Run one child validator for each array element in source order.
+export fn forEachValidator[T, V](
+  name: Str, select: fn(T) -> Array[V], child: Validator.Validator[V]
+) -> Rule.Rule[T] {
+  let groups = childGroups(&child)
+  Rule.Rule{name: name, ruleSets: groups, run: fn(root: T, sets: Array[Str], includeDefault: Bool, properties: Array[Str], data: Rule.ContextData) -> Array[Validation.Failure] {
+      var failures: Array[Validation.Failure] = []
+      var index = 0
+      for value in select(root) {
+        let path = name + "[" + show(index) + "]"
+        if reaches(name, path, &properties) {
+          let options = Validator.Options{properties: requested(path, &properties), ruleSets: sets, includeDefault: includeDefault}
+          for failure in prefix(path, &Validator.validateWithData(&child, value, options, data).errors) {
+            failures = failures.push(failure)
+          }
+        }
+        index = index + 1
+      }
+      failures
+    } }
+}
+
+/// Names that let the parent reach the child's selected rule sets.
+fn childGroups[V](child: &Validator.Validator[V]) -> Array[Str] {
+  var groups: Array[Str] = []
+  for rule in child.rules {
+    if rule.ruleSets.isEmpty() && !groups.contains("default") { groups = groups.push("default") }
+    for name in rule.ruleSets {
+      if !groups.contains(name) { groups = groups.push(name) }
+    }
+  }
+  groups
+}
+
+/// Property names relative to the child, or empty for the whole child.
+fn requested(name: Str, properties: &Array[Str]) -> Array[Str] {
+  if name.isEmpty() { return *properties }
+  var selected: Array[Str] = []
+  for wanted in *properties {
+    if wanted == name || name.startsWith(wanted + ".") || name.startsWith(wanted + "[") { return [] }
+    if wanted.startsWith(name + ".") { selected = selected.push(Text.drop(wanted, name.length() + 1)) }
+  }
+  selected
+}
+
+/// Whether a selected root path reaches this array element.
+fn reaches(name: Str, path: Str, properties: &Array[Str]) -> Bool {
+  if properties.isEmpty() { return true }
+  for wanted in *properties {
+    if wanted == name || wanted == path || wanted.startsWith(path + ".") { return true }
+  }
+  false
+}
+
+/// Add the root path without changing the child validator's messages.
+fn prefix(name: Str, failures: &Array[Validation.Failure]) -> Array[Validation.Failure] {
+  failures.map(|failure: Validation.Failure| Validation.Failure {
+      ..failure,
+      propertyName: if name.isEmpty() { failure.propertyName } else if failure.propertyName.isEmpty() { name } else { name + "." + failure.propertyName }
+    })
+}

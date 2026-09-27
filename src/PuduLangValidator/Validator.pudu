@@ -1,0 +1,112 @@
+/** @Validation.Validator.Aggregate — composes ordered validation rules */
+module PuduLangValidator.Validator
+
+import Std.List as List
+import PuduLangValidator.Result as Validation
+import PuduLangValidator.Rule as Rule
+
+/** @Validation.Validator.Options — selects named rule subsets */
+export type Options = { properties: Array[Str], ruleSets: Array[Str], includeDefault: Bool }
+
+/** @Validation.Validator.Validator — holds rules for one source type */
+export type Validator[T] = {
+  rules: Array[Rule.Rule[T]],
+  stop: Bool,
+  preflight: fn(T) -> Option[Array[Validation.Failure]]
+}
+
+/// A validator with no rules.
+export fn create[T]() -> Validator[T] {
+  Validator{rules: [], stop: false, preflight: fn(_root: T) -> Option[Array[Validation.Failure]] { None }}
+}
+
+/// Return preflight failures before ordinary rules, or `None` to continue.
+export fn withPreValidation[T](
+  validator: Validator[T], preflight: fn(T) -> Option[Array[Validation.Failure]]
+) -> Validator[T] {
+  Validator{..validator, preflight: preflight}
+}
+
+/// Append a built rule without changing existing rule order.
+export fn add[T](validator: Validator[T], rule: Rule.Rule[T]) -> Validator[T] {
+  Validator{..validator, rules: validator.rules.push(rule)}
+}
+
+/// Append another validator's rules in their original order.
+export fn include[T](validator: Validator[T], other: &Validator[T]) -> Validator[T] {
+  var rules = validator.rules
+  for rule in other.rules { rules = rules.push(rule) }
+  Validator{..validator, rules: rules}
+}
+
+/// Stop after the first rule that reports a failure.
+export fn stopOnFirst[T](validator: Validator[T]) -> Validator[T] {
+  Validator{..validator, stop: true}
+}
+
+/// Select every property and the unnamed rules.
+export fn defaults() -> Options { Options{properties: [], ruleSets: [], includeDefault: true} }
+
+/// Select named rule sets without unnamed rules.
+export fn onlyRuleSets(names: Array[Str]) -> Options {
+  Options{properties: [], ruleSets: names, includeDefault: false}
+}
+
+/// Select every named rule set and unnamed rules.
+export fn allRuleSets() -> Options {
+  Options{properties: [], ruleSets: ["*"], includeDefault: true}
+}
+
+/// Restrict a selection to these property paths.
+export fn includeProperties(options: Options, names: Array[Str]) -> Options {
+  Options{..options, properties: names}
+}
+
+/// Also run rules outside named rule sets.
+export fn includeRulesNotInRuleSet(options: Options) -> Options {
+  Options{..options, includeDefault: true}
+}
+
+/// Run the default rules against one source value.
+export fn validate[T](validator: &Validator[T], root: T) -> Validation.ValidationResult {
+  validateWith(validator, root, defaults())
+}
+
+/// Run selected rules and preserve their declaration order.
+export fn validateWith[T](validator: &Validator[T], root: T, options: Options) -> Validation.ValidationResult {
+  validateWithData(validator, root, options, mapOf([]))
+}
+
+/// Run selected rules with immutable application context data.
+export fn validateWithData[T](
+  validator: &Validator[T], root: T, options: Options, data: Rule.ContextData
+) -> Validation.ValidationResult {
+  if let Some(early) = validator.preflight(root) { return Validation.fromFailures(early) }
+  var failures: Array[Validation.Failure] = []
+  for rule in validator.rules {
+    if accepts(rule.name, &rule.ruleSets, &options) {
+      let found = rule.run(root, options.ruleSets, options.includeDefault, options.properties, data)
+      for failure in found { failures = failures.push(failure) }
+      if validator.stop && !found.isEmpty() { break }
+    }
+  }
+  Validation.fromFailures(failures)
+}
+
+/// Whether a rule path and its sets meet the requested selection.
+export fn accepts(path: Str, ruleSets: &Array[Str], options: &Options) -> Bool {
+  let pathAllowed = if options.properties.isEmpty() {
+    true
+  } else {
+    List.any(&options.properties, |name: Str|
+      path == name || path.startsWith(name + ".") || path.startsWith(name + "[") ||
+      name.startsWith(path + ".") || name.startsWith(path + "["))
+  }
+  let setAllowed = if ruleSets.isEmpty() {
+    options.includeDefault
+  } else {
+    options.ruleSets.contains("*") || List.any(ruleSets, |name: Str|
+      options.ruleSets.contains(name) || (name == "default" && options.includeDefault))
+  }
+  pathAllowed && setAllowed
+}

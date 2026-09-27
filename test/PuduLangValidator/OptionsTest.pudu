@@ -1,0 +1,52 @@
+/** @Test.Validation.Options.Suite — checks selection and message metadata */
+module PuduLangValidator.OptionsTest
+
+import Std.Test as Test
+import PuduLangValidator.Http as ValidationHttp
+import PuduLangValidator.Localization as Localization
+import PuduLangValidator.Result as Validation
+import PuduLangValidator.Rule as Rule
+import PuduLangValidator.Rules.Text as TextRule
+import PuduLangValidator.Testing as Checking
+import PuduLangValidator.Validator as Validator
+
+type User = { name: Str, locale: Str, active: Bool }
+
+fn validator() -> Validator.Validator[User] {
+  let catalog = Localization.withMessage(Localization.empty(), "es", "NotEmpty", "Se requiere \{PropertyName\}.")
+  let name = Rule.build(Localization.localized(
+      Rule.withName(TextRule.notEmpty(Rule.ruleFor("name", |user: User| user.name)), "nombre"),
+      catalog, |user: User| user.locale, "NotEmpty", "Name is required."
+    ))
+  let active = Rule.build(Rule.inRuleSet(Rule.withMessage(Rule.must(
+          Rule.ruleFor("active", |user: User| user.active), |value: Bool| value
+        ), "Active is required."), "activation"))
+  Validator.add(Validator.add(Validator.create(), name), active)
+}
+
+fn main() -> Int {
+  let rules = validator()
+  let user = User{name: "", locale: "es-PR", active: false}
+  let default = Validator.validate(&rules, user)
+  let activation = Validator.validateWith(&rules, user, Validator.onlyRuleSets(["activation"]))
+  let both = Validator.validateWith(&rules, user,
+    Validator.includeRulesNotInRuleSet(Validator.onlyRuleSets(["activation"])))
+  let named = Rule.build(Rule.withMessage(Rule.withName(Rule.must(
+          Rule.ruleFor("name", |item: User| item.name), |value: Str| !value.isEmpty()
+        ), "display name"), "\{PropertyName\} is absent at \{PropertyPath\}."))
+  let namedResult = Validator.validate(&Validator.add(Validator.create(), named), user)
+  let checks = Test.suite("Options", &[
+      Test.equals("default excludes named set", &default.errors.length(), &1),
+      Test.equals("named set excludes defaults", &activation.errors.length(), &1),
+      Test.equals("both sets include both rules", &both.errors.length(), &2),
+      Test.equals("locale language fallback renders display name", &default.errors[0].errorMessage,
+          &"Se requiere nombre."),
+      Test.equals("display name keeps property path", &namedResult.errors[0].errorMessage,
+          &"display name is absent at name."),
+      Test.that("test helper finds stable code", Checking.hasCode(&default, "NotEmpty")),
+      Test.that("test helper checks path", Checking.hasErrorFor(&activation, "active")),
+      Test.equals("dictionary groups one path", &Validation.toDictionary(&default).size(), &1),
+      Test.equals("invalid result maps to HTTP 422", &ValidationHttp.respond(&default).status.code, &422)
+    ])
+  Test.report(&Test.run(&checks))
+}

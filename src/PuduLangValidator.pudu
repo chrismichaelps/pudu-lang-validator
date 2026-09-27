@@ -1,0 +1,5 @@
+/** @Validation.Package.Root — identifies the Pudu validation library */
+module PuduLangValidator
+
+/// The version of this package.
+export fn version() -> Str { "0.1.0" }

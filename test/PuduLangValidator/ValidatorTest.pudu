@@ -1,0 +1,41 @@
+/** @Test.Validation.Validator.Suite — checks rule order and selection */
+module PuduLangValidator.ValidatorTest
+
+import Std.Test as Test
+import PuduLangValidator.Result as Validation
+import PuduLangValidator.Rule as Rule
+import PuduLangValidator.Rules.Collection as CollectionRule
+import PuduLangValidator.Rules.Number as NumberRule
+import PuduLangValidator.Rules.Text as TextRule
+import PuduLangValidator.Validator as Validator
+
+/** @Test.Validation.Person.Model — fixture for typed selectors */
+type Person = { name: Str, age: Int, emails: Array[Str] }
+
+fn rules() -> Validator.Validator[Person] {
+  let name = Rule.build(TextRule.notEmpty(Rule.ruleFor("name", |person: Person| person.name)))
+  let age = Rule.build(NumberRule.greaterThan(Rule.ruleFor("age", |person: Person| person.age), 17))
+  let emails = CollectionRule.forEach("emails", |person: Person| person.emails,
+    |email: Str| email.contains("@"), "Email at \{CollectionIndex\} needs an @ sign.")
+  let empty: Validator.Validator[Person] = Validator.create()
+  Validator.add(Validator.add(Validator.add(empty, name), age), emails)
+}
+
+fn main() -> Int {
+  let validator = rules()
+  let bad = Validator.validate(&validator, Person{name: " ", age: 12, emails: ["ok@site", "broken"]})
+  let good = Validator.validate(&validator, Person{name: "Ada", age: 18, emails: ["ada@site"]})
+  let chosen = Validator.validateWith(&validator, Person{name: " ", age: 12, emails: []},
+    Validator.Options{properties: ["age"], ruleSets: [], includeDefault: true})
+  let checks = Test.suite("Validator", &[
+      Test.equals("valid input has no failures", &good.isValid, &true),
+      Test.equals("failures remain in rule order", &bad.errors.map(|error: Validation.Failure| error.propertyName), &[
+          "name", "age", "emails[1]"
+        ]),
+      Test.equals("collection index renders", &bad.errors[2].errorMessage, &"Email at 1 needs an @ sign."),
+      Test.equals("property selection excludes other rules", &chosen.errors.length(), &1),
+      Test.equals("property selection keeps chosen path", &chosen.errors[0].propertyName, &"age"),
+      Test.equals("messages join in order", &Validation.messages(&chosen, "|"), &"Number must be greater than 17.")
+    ])
+  Test.report(&Test.run(&checks))
+}

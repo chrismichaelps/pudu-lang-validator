@@ -1,0 +1,29 @@
+/** @Test.Validation.Message.Suite — checks rendered built-in bounds */
+module PuduLangValidator.MessageTest
+
+import Std.Test as Test
+import PuduLangValidator.Rule as Rule
+import PuduLangValidator.Rules.Collection as Collection
+import PuduLangValidator.Rules.Number as Number
+import PuduLangValidator.Rules.Text as Text
+import PuduLangValidator.Validator as Validator
+
+type Sample = { text: Str, number: Int, lines: Array[Str] }
+
+fn rules() -> Validator.Validator[Sample] {
+  let text = Rule.build(Text.length(Rule.ruleFor("text", |sample: Sample| sample.text), 2, 4))
+  let number = Rule.build(Number.inclusiveBetween(Rule.ruleFor("number", |sample: Sample| sample.number), 3, 7))
+  let lines = Rule.build(Collection.countBetween(Rule.ruleFor("lines", |sample: Sample| sample.lines), 1, 2))
+  Validator.add(Validator.add(Validator.add(Validator.create(), text), number), lines)
+}
+
+fn main() -> Int {
+  let validator = rules()
+  let outcome = Validator.validate(&validator, Sample{text: "x", number: 9, lines: []})
+  let checks = Test.suite("Message", &[
+      Test.equals("text interval renders", &outcome.errors[0].errorMessage, &"Text must contain between 2 and 4 characters."),
+      Test.equals("number interval renders", &outcome.errors[1].errorMessage, &"Number must be from 3 through 7."),
+      Test.equals("collection interval renders", &outcome.errors[2].errorMessage, &"The collection must contain from 1 through 2 items.")
+    ])
+  Test.report(&Test.run(&checks))
+}

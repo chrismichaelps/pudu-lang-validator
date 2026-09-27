@@ -1,0 +1,55 @@
+/** @Test.Validation.Behavior.Suite — checks cascade and boundary cases */
+module PuduLangValidator.BehaviorTest
+
+import Std.Test as Test
+import PuduLangValidator.Result as Validation
+import PuduLangValidator.Rule as Rule
+import PuduLangValidator.Rules.Ordering as OrderingRule
+import PuduLangValidator.Rules.Text as TextRule
+import PuduLangValidator.Validator as Validator
+
+type Item = { name: Str, count: Int, enabled: Bool }
+
+fn chain() -> Rule.RuleBuilder[Item, Str] {
+  let base = Rule.ruleFor("name", |item: Item| item.name)
+  let first = Rule.withCode(TextRule.notEmpty(base), "MissingName")
+  Rule.withState(Rule.withSeverity(Rule.withMessage(TextRule.minimumLength(first, 3),
+        "\{PropertyName\} failed at \{PropertyPath\}."), Validation.Warning), "profile")
+}
+
+fn main() -> Int {
+  let empty = Item{name: "", count: 0, enabled: false}
+  let stopped = Validator.validate(&Validator.add(Validator.create(), Rule.build(Rule.stopOnFirst(chain()))), empty)
+  let continued = Validator.validate(&Validator.add(Validator.create(), Rule.build(chain())), empty)
+  let whenAll = Validator.validate(&Validator.add(Validator.create(), Rule.build(Rule.when(chain(),
+          |item: Item| item.enabled))), empty)
+  let whenCurrent = Validator.validate(&Validator.add(Validator.create(), Rule.build(Rule.whenCurrent(chain(),
+          |item: Item| item.enabled))), empty)
+  let count = Rule.build(OrderingRule.greaterThan(Rule.ruleFor("count", |item: Item| item.count), 0))
+  let classStopped = Validator.validate(&Validator.stopOnFirst(Validator.add(
+        Validator.add(Validator.create(), Rule.build(chain())), count)), empty)
+  let preflight = Validator.withPreValidation(Validator.add(Validator.create(), count),
+    fn(_item: Item) -> Option[Array[Validation.Failure]] { Some([]) })
+  let preflightResult = Validator.validate(&preflight, empty)
+  let regexGood = TextRule.matches(Rule.ruleFor("name", |item: Item| item.name), "^a+$")
+  let regexBad = TextRule.matches(Rule.ruleFor("name", |item: Item| item.name), "(")
+  let checks = Test.suite("Behavior", &[
+      Test.equals("rule cascade stops after first failure", &stopped.errors.length(), &1),
+      Test.equals("rule cascade continues by default", &continued.errors.length(), &2),
+      Test.equals("all-check condition skips every check", &whenAll.errors.length(), &0),
+      Test.equals("current-check condition leaves earlier checks", &whenCurrent.errors.length(), &1),
+      Test.equals("custom code is attached to the first failure", &continued.errors[0].errorCode, &"MissingName"),
+      Test.equals("severity and state are attached to latest check", &continued.errors[1].severity, &Validation.Warning),
+      Test.equals("state is kept", &continued.errors[1].customState, &"profile"),
+      Test.equals("message placeholders render paths", &continued.errors[1].errorMessage, &"name failed at name."),
+      Test.equals("validator cascade stops after first rule", &classStopped.errors.length(), &2),
+      Test.equals("preflight may stop with a valid empty result", &preflightResult.isValid, &true),
+      Test.that("valid regex compiles", match regexGood { case Ok(_) => true case Err(_) => false }),
+      Test.that("invalid regex reports configuration error", match regexBad { case Ok(_) => false case Err(_) => true }),
+      Test.that("invalid result becomes typed failure", match Validation.toResult(&continued, empty) {
+          case Ok(_) => false
+          case Err(errors) => errors.length() == 2
+        })
+    ])
+  Test.report(&Test.run(&checks))
+}

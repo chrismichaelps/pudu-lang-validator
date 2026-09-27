@@ -1,0 +1,52 @@
+/** @Test.Validation.Context.Suite — checks immutable root data */
+module PuduLangValidator.ContextTest
+
+import Std.Json as Json
+import Std.Map as Map
+import Std.Test as Test
+import PuduLangValidator.Advanced as Advanced
+import PuduLangValidator.Result as Validation
+import PuduLangValidator.Rule as Rule
+import PuduLangValidator.Rules.Child as Child
+import PuduLangValidator.Validator as Validator
+
+type ChildValue = { token: Str }
+type Model = { child: ChildValue }
+
+fn childRules() -> Validator.Validator[ChildValue] {
+  let token = Rule.build(Rule.withCode(Rule.mustWithContext(
+        Rule.ruleFor("token", |value: ChildValue| value.token),
+        fn(_root: ChildValue, token: Str, data: Rule.ContextData) -> Bool {
+          match Map.get(&data, "expected") {
+            case Some(Json.Text(expected)) => token == expected
+            case _ => false
+          }
+        }
+      ), "TokenMismatch"))
+  Validator.add(Validator.create(), token)
+}
+
+fn main() -> Int {
+  let child = Child.setValidator("child", |model: Model| model.child, childRules())
+  let validator = Validator.add(Validator.create(), child)
+  let allowed: Rule.ContextData = mapOf([("expected", Json.Text("open"))])
+  let good = Validator.validateWithData(&validator, Model{child: ChildValue{token: "open"}},
+    Validator.defaults(), allowed)
+  let bad = Validator.validateWithData(&validator, Model{child: ChildValue{token: "closed"}},
+    Validator.defaults(), allowed)
+  let missing = Validator.validate(&validator, Model{child: ChildValue{token: "open"}})
+  let custom = Advanced.customWithContext("context", fn(_model: Model, data: Rule.ContextData) -> Array[Validation.Failure] {
+      if Map.get(&data, "expected") == None { [Validation.Failure {
+            propertyName: "context", errorMessage: "Expected token was not supplied.", errorCode: "MissingContext",
+            severity: Validation.Error, customState: ""
+          }] } else { [] }
+    })
+  let customResult = Validator.validate(&Validator.add(Validator.create(), custom), Model{child: ChildValue{token: "open"}})
+  let checks = Test.suite("Context", &[
+      Test.equals("child receives root context data", &good.isValid, &true),
+      Test.equals("wrong token fails child at prefixed path", &bad.errors[0].propertyName, &"child.token"),
+      Test.equals("missing context fails typed check", &missing.errors[0].errorCode, &"TokenMismatch"),
+      Test.equals("custom context rule emits its own failure", &customResult.errors[0].errorCode, &"MissingContext")
+    ])
+  Test.report(&Test.run(&checks))
+}

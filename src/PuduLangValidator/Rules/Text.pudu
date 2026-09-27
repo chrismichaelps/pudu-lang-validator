@@ -1,0 +1,92 @@
+/** @Validation.Rules.Text.Module — checks textual property constraints */
+module PuduLangValidator.Rules.Text
+
+import Std.Char as Char
+import Std.List as List
+import Std.Regex as Regex
+import Std.Text as Text
+import PuduLangValidator.Rule as Rule
+
+/// Require at least one non-whitespace character.
+export fn notEmpty[T](builder: Rule.RuleBuilder[T, Str]) -> Rule.RuleBuilder[T, Str] {
+  Rule.withCode(Rule.withMessage(Rule.must(builder, |value: Str| !value.trim().isEmpty()), "Text is required."), "NotEmpty")
+}
+
+/// Require no non-whitespace characters.
+export fn empty[T](builder: Rule.RuleBuilder[T, Str]) -> Rule.RuleBuilder[T, Str] {
+  Rule.withCode(Rule.withMessage(Rule.must(builder, |value: Str| value.trim().isEmpty()), "Text must be empty."), "Empty")
+}
+
+/// Require a Unicode-scalar length within inclusive bounds.
+export fn length[T](builder: Rule.RuleBuilder[T, Str], minimum: Int, maximum: Int) -> Rule.RuleBuilder[T, Str] {
+  Rule.withCode(Rule.withMessageFrom(
+      Rule.must(builder, |value: Str| value.length() >= minimum && value.length() <= maximum),
+      fn(_root: T, _value: Str) -> Str { "Text must contain between " + show(minimum) + " and " + show(maximum) + " characters." }
+    ), "Length")
+}
+
+/// Require at least the stated number of Unicode scalars.
+export fn minimumLength[T](builder: Rule.RuleBuilder[T, Str], minimum: Int) -> Rule.RuleBuilder[T, Str] {
+  Rule.withCode(Rule.withMessageFrom(Rule.must(builder, |value: Str| value.length() >= minimum),
+      fn(_root: T, _value: Str) -> Str { "Text must contain at least " + show(minimum) + " characters." }), "MinimumLength")
+}
+
+/// Require no more than the stated number of Unicode scalars.
+export fn maximumLength[T](builder: Rule.RuleBuilder[T, Str], maximum: Int) -> Rule.RuleBuilder[T, Str] {
+  Rule.withCode(Rule.withMessageFrom(Rule.must(builder, |value: Str| value.length() <= maximum),
+      fn(_root: T, _value: Str) -> Str { "Text must contain no more than " + show(maximum) + " characters." }), "MaximumLength")
+}
+
+/// Require exactly one internal `@`; this checks shape, not delivery.
+export fn emailAddress[T](builder: Rule.RuleBuilder[T, Str]) -> Rule.RuleBuilder[T, Str] {
+  Rule.withCode(Rule.withMessage(Rule.must(builder, |value: Str|
+        Text.countOccurrences(value, "@") == 1 && !value.startsWith("@") && !value.endsWith("@")
+      ), "Text must have an internal @ sign."), "EmailAddress")
+}
+
+/// Compile a pattern once and attach it, or return the pattern error.
+export fn matches[T](builder: Rule.RuleBuilder[T, Str], pattern: Str) -> Result[Rule.RuleBuilder[T, Str], Regex.RegexError] {
+  let compiled = Regex.compile(pattern) ?
+  Ok(Rule.withCode(Rule.withMessage(
+        Rule.must(builder, |value: Str| Regex.isMatch(&compiled, value)),
+        "Text does not match the required pattern."
+      ), "Matches"))
+}
+
+/// Require a plausible card number with a valid Luhn checksum.
+export fn creditCard[T](builder: Rule.RuleBuilder[T, Str]) -> Rule.RuleBuilder[T, Str] {
+  Rule.withCode(Rule.withMessage(Rule.must(builder, |value: Str| isCardNumber(value)),
+      "Card number failed its checksum."), "CreditCard")
+}
+
+/// Require one of the supplied enum names.
+export fn enumName[T](
+  builder: Rule.RuleBuilder[T, Str], names: Array[Str], caseSensitive: Bool
+) -> Rule.RuleBuilder[T, Str] {
+  Rule.withCode(Rule.withMessage(Rule.must(builder, |value: Str|
+        List.any(&names, |name: Str| if caseSensitive { value == name } else { value.toLower() == name.toLower() })
+      ), "Text is not a recognized name."), "EnumName")
+}
+
+/// Count digits from the right, doubling alternating positions.
+fn isCardNumber(value: Str) -> Bool {
+  var digits: Array[Int] = []
+  for character in value.chars() {
+    if character == ' ' || character == '-' { continue }
+    if character < '0' || character > '9' { return false }
+    let digit = match Char.toDigit(character) {
+      case Some(found) => found
+      case None => 0
+    }
+    digits = digits.push(digit)
+  }
+  if digits.length() < 12 || digits.length() > 19 { return false }
+  var sum = 0
+  var index = 0
+  for digit in digits.reverse() {
+    let doubled = if index % 2 == 1 { digit * 2 } else { digit }
+    sum = sum + if doubled > 9 { doubled - 9 } else { doubled }
+    index = index + 1
+  }
+  sum % 10 == 0
+}
