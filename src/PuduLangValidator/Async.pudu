@@ -10,7 +10,7 @@ import PuduLangValidator.Validator as Validator
 export type AsyncRule[T] = {
   name: Str,
   ruleSets: Array[Str],
-  run: async fn(T, Validator.Options) -> Array[Validation.Failure]
+  run: async fn(T, Validator.Options, Rule.ContextData) -> Array[Validation.Failure]
 }
 
 /** @Validation.Async.Validator — orders asynchronous and lifted rules */
@@ -21,9 +21,21 @@ export fn mustAsync[T, V](
   name: Str, select: fn(T) -> V, test: async fn(T, V) -> Bool,
   message: Str, code: Str
 ) -> AsyncRule[T] {
-  AsyncRule{name: name, ruleSets: [], run: async fn(root: T, _options: Validator.Options) -> Array[Validation.Failure] {
+  mustAsyncWithContext(name, select,
+    async fn(root: T, value: V, _data: Rule.ContextData) -> Bool { test(root, value).await },
+    message, code)
+}
+
+/// Build an awaited property check that may read immutable root data.
+export fn mustAsyncWithContext[T, V](
+  name: Str, select: fn(T) -> V, test: async fn(T, V, Rule.ContextData) -> Bool,
+  message: Str, code: Str
+) -> AsyncRule[T] {
+  AsyncRule{name: name, ruleSets: [], run: async fn(root: T, options: Validator.Options, data: Rule.ContextData) -> Array[Validation.Failure] {
+      if !options.properties.isEmpty() && !List.any(&options.properties, |wanted: Str|
+        wanted == name || name.startsWith(wanted + ".") || name.startsWith(wanted + "[")) { return [] }
       let value = select(root)
-      if test(root, value).await { [] } else { [Validation.Failure {
+      if test(root, value, data).await { [] } else { [Validation.Failure {
             propertyName: name,
             errorMessage: message.replace("\{PropertyName\}", name)
               .replace("\{PropertyPath\}", name)
@@ -46,12 +58,23 @@ export fn forEachWhereAsync[T, V](
   name: Str, select: fn(T) -> Array[V], keep: async fn(V) -> Bool,
   test: async fn(T, V) -> Bool, message: Str, code: Str
 ) -> AsyncRule[T] {
-  AsyncRule{name: name, ruleSets: [], run: async fn(root: T, options: Validator.Options) -> Array[Validation.Failure] {
+  forEachWhereAsyncWithContext(name, select,
+    async fn(item: V, _data: Rule.ContextData) -> Bool { keep(item).await },
+    async fn(root: T, item: V, _data: Rule.ContextData) -> Bool { test(root, item).await },
+    message, code)
+}
+
+/// Await a context-aware filter and predicate for each selected item.
+export fn forEachWhereAsyncWithContext[T, V](
+  name: Str, select: fn(T) -> Array[V], keep: async fn(V, Rule.ContextData) -> Bool,
+  test: async fn(T, V, Rule.ContextData) -> Bool, message: Str, code: Str
+) -> AsyncRule[T] {
+  AsyncRule{name: name, ruleSets: [], run: async fn(root: T, options: Validator.Options, data: Rule.ContextData) -> Array[Validation.Failure] {
       var failures: Array[Validation.Failure] = []
       var index = 0
       for item in select(root) {
         let path = name + "[" + show(index) + "]"
-        if selectedElement(name, path, &options.properties) && keep(item).await && !test(root, item).await {
+        if selectedElement(name, path, &options.properties) && keep(item, data).await && !test(root, item, data).await {
           failures = failures.push(Validation.Failure {
               propertyName: path,
               errorMessage: message.replace("\{PropertyName\}", name)
@@ -70,8 +93,8 @@ export fn forEachWhereAsync[T, V](
 export fn fromSync[T](rule: Rule.Rule[T]) -> AsyncRule[T] {
   let name = rule.name
   let sets = rule.ruleSets
-  AsyncRule{name: name, ruleSets: sets, run: async fn(root: T, options: Validator.Options) -> Array[Validation.Failure] {
-      rule.run(root, options.ruleSets, options.includeDefault, options.properties, mapOf([]))
+  AsyncRule{name: name, ruleSets: sets, run: async fn(root: T, options: Validator.Options, data: Rule.ContextData) -> Array[Validation.Failure] {
+      rule.run(root, options.ruleSets, options.includeDefault, options.properties, data)
     } }
 }
 
@@ -84,8 +107,8 @@ export fn inRuleSet[T](rule: AsyncRule[T], name: Str) -> AsyncRule[T] {
 export fn withSeverity[T](rule: AsyncRule[T], severity: Validation.Severity) -> AsyncRule[T] {
   let name = rule.name
   let sets = rule.ruleSets
-  AsyncRule{name: name, ruleSets: sets, run: async fn(root: T, options: Validator.Options) -> Array[Validation.Failure] {
-      rule.run(root, options).await.map(|failure: Validation.Failure| Validation.Failure{..failure, severity: severity})
+  AsyncRule{name: name, ruleSets: sets, run: async fn(root: T, options: Validator.Options, data: Rule.ContextData) -> Array[Validation.Failure] {
+      rule.run(root, options, data).await.map(|failure: Validation.Failure| Validation.Failure{..failure, severity: severity})
     } }
 }
 
@@ -93,8 +116,8 @@ export fn withSeverity[T](rule: AsyncRule[T], severity: Validation.Severity) -> 
 export fn withState[T](rule: AsyncRule[T], state: Str) -> AsyncRule[T] {
   let name = rule.name
   let sets = rule.ruleSets
-  AsyncRule{name: name, ruleSets: sets, run: async fn(root: T, options: Validator.Options) -> Array[Validation.Failure] {
-      rule.run(root, options).await.map(|failure: Validation.Failure| Validation.Failure{..failure, customState: state})
+  AsyncRule{name: name, ruleSets: sets, run: async fn(root: T, options: Validator.Options, data: Rule.ContextData) -> Array[Validation.Failure] {
+      rule.run(root, options, data).await.map(|failure: Validation.Failure| Validation.Failure{..failure, customState: state})
     } }
 }
 
@@ -102,8 +125,8 @@ export fn withState[T](rule: AsyncRule[T], state: Str) -> AsyncRule[T] {
 export fn when[T](rule: AsyncRule[T], condition: fn(T) -> Bool) -> AsyncRule[T] {
   let name = rule.name
   let sets = rule.ruleSets
-  AsyncRule{name: name, ruleSets: sets, run: async fn(root: T, options: Validator.Options) -> Array[Validation.Failure] {
-      if condition(root) { rule.run(root, options).await } else { [] }
+  AsyncRule{name: name, ruleSets: sets, run: async fn(root: T, options: Validator.Options, data: Rule.ContextData) -> Array[Validation.Failure] {
+      if condition(root) { rule.run(root, options, data).await } else { [] }
     } }
 }
 
@@ -129,10 +152,17 @@ export async fn validateAsync[T](validator: &AsyncValidator[T], root: T) -> Vali
 export async fn validateAsyncWith[T](
   validator: &AsyncValidator[T], root: T, options: Validator.Options
 ) -> Validation.ValidationResult {
+  validateAsyncWithData(validator, root, options, mapOf([])).await
+}
+
+/// Await selected rules with immutable application context data.
+export async fn validateAsyncWithData[T](
+  validator: &AsyncValidator[T], root: T, options: Validator.Options, data: Rule.ContextData
+) -> Validation.ValidationResult {
   var failures: Array[Validation.Failure] = []
   for rule in validator.rules {
     if Validator.accepts(rule.name, &rule.ruleSets, &options) {
-      let found = rule.run(root, options).await
+      let found = rule.run(root, options, data).await
       for failure in found { failures = failures.push(failure) }
       if validator.stop && !found.isEmpty() { break }
     }

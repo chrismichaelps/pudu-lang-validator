@@ -1,6 +1,8 @@
 /** @Test.Validation.Async.Suite — checks awaited failure order */
 module PuduLangValidator.AsyncTest
 
+import Std.Json as Json
+import Std.Map as Map
 import Std.Test as Test
 import PuduLangValidator.Async as Async
 import PuduLangValidator.Result as Validation
@@ -14,6 +16,13 @@ async fn keyExists(_root: Item, key: Str) -> Bool { key == "present" }
 async fn included(tag: Str) -> Bool { tag != "skip" }
 
 async fn longEnough(_root: Item, tag: Str) -> Bool { tag.length() >= 3 }
+
+async fn matchesContext(_root: Item, key: Str, data: Rule.ContextData) -> Bool {
+  match Map.get(&data, "expected") {
+    case Some(Json.Text(expected)) => key == expected
+    case _ => false
+  }
+}
 
 async fn main() -> Int {
   let asyncRule = Async.mustAsync("key", |item: Item| item.key, keyExists,
@@ -36,6 +45,42 @@ async fn main() -> Int {
   let defaultNamed = Async.validateAsync(&namedValidator, Item{key: "absent", count: 0, tags: []}).await
   let chosenNamed = Async.validateAsyncWith(&namedValidator, Item{key: "absent", count: 0, tags: []},
     Validator.onlyRuleSets(["lookup"])).await
+  let data: Rule.ContextData = mapOf([("expected", Json.Text("present"))])
+  let contextRule = Async.withState(Async.mustAsyncWithContext("key", |item: Item| item.key,
+      matchesContext, "Key differs from context.", "ContextKey"), "lookup")
+  let contextValidator = Async.add(Async.create(), contextRule)
+  let contextGood = Async.validateAsyncWithData(&contextValidator,
+    Item{key: "present", count: 0, tags: []}, Validator.defaults(), data).await
+  let contextBad = Async.validateAsyncWithData(&contextValidator,
+    Item{key: "absent", count: 0, tags: []}, Validator.defaults(), data).await
+  let lifted = Rule.build(Rule.mustWithContext(Rule.ruleFor("key", |item: Item| item.key),
+      fn(_root: Item, key: Str, context: Rule.ContextData) -> Bool {
+        match Map.get(&context, "expected") {
+          case Some(Json.Text(expected)) => key == expected
+          case _ => false
+        }
+      }))
+  let liftedGood = Async.validateAsyncWithData(&Async.add(Async.create(), Async.fromSync(lifted)),
+    Item{key: "present", count: 0, tags: []}, Validator.defaults(), data).await
+  let descendantOnly = Async.validateAsyncWith(&contextValidator,
+    Item{key: "absent", count: 0, tags: []},
+    Validator.includeProperties(Validator.defaults(), ["key.detail"])).await
+  let tagData: Rule.ContextData = mapOf([("expected", Json.Text("long")), ("ignored", Json.Text("skip"))])
+  let contextTags = Async.forEachWhereAsyncWithContext("tags", |item: Item| item.tags,
+    async fn(tag: Str, context: Rule.ContextData) -> Bool {
+      match Map.get(&context, "ignored") {
+        case Some(Json.Text(ignored)) => tag != ignored
+        case _ => true
+      }
+    },
+    async fn(_root: Item, tag: Str, context: Rule.ContextData) -> Bool {
+      match Map.get(&context, "expected") {
+        case Some(Json.Text(expected)) => tag == expected
+        case _ => false
+      }
+    }, "Tag differs from context.", "TagContext")
+  let contextTagFailures = Async.validateAsyncWithData(&Async.add(Async.create(), contextTags),
+    Item{key: "present", count: 0, tags: ["skip", "x", "long"]}, Validator.defaults(), tagData).await
   let checks = Test.suite("Async", &[
       Test.equals("async and sync failures keep order", &bad.errors.map(|failure: Validation.Failure| failure.propertyName),
           &["key", "count"]),
@@ -44,7 +89,13 @@ async fn main() -> Int {
       Test.equals("async collection message renders index", &tags.errors[0].errorMessage, &"Tag 1 is short."),
       Test.equals("async property selection keeps one element", &selectedTags.errors[0].propertyName, &"tags[1]"),
       Test.equals("async named set is absent from defaults", &defaultNamed.errors.length(), &0),
-      Test.equals("async named set retains severity", &chosenNamed.errors[0].severity, &Validation.Warning)
+      Test.equals("async named set retains severity", &chosenNamed.errors[0].severity, &Validation.Warning),
+      Test.equals("async check receives context", &contextGood.isValid, &true),
+      Test.equals("async decorator preserves context and state", &contextBad.errors[0].customState, &"lookup"),
+      Test.equals("lifted synchronous rule receives context", &liftedGood.isValid, &true),
+      Test.equals("scalar async rule skips descendant selection", &descendantOnly.errors.length(), &0),
+      Test.equals("async collection filter and check receive context", &contextTagFailures.errors.map(|failure: Validation.Failure| failure.propertyName),
+          &["tags[1]"])
     ])
   Test.report(&Test.run(&checks))
 }

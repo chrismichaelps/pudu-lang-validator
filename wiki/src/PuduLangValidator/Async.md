@@ -9,9 +9,14 @@ path: src/PuduLangValidator/Async.pudu
 
 `AsyncRule[T]` holds an asynchronous root check. `mustAsync` checks a typed selected property. `forEachAsync` and `forEachWhereAsync` validate array elements with optional asynchronous filtering. `fromSync` lifts an ordinary built rule. `inRuleSet`, `withSeverity`, `withState`, and `when` decorate a built async rule. `AsyncValidator[T]` combines these rules; `validateAsync` uses default selection and `validateAsyncWith` applies explicit property and rule-set options. The synchronous validator does not accept async rules.
 
+`mustAsyncWithContext` receives immutable root data with its source and property. `validateAsyncWithData` supplies that data to async rules and lifted synchronous rules. Existing entry points pass an empty map.
+`forEachWhereAsyncWithContext` passes the same data to both its filter and its element predicate; the simpler array functions adapt to it.
+
 ## Algorithm and edge cases
 
 Selection runs once for an async rule. A false predicate emits one failure with the supplied path, message, and code. Array checks and filters are awaited in source order and retain original indices; unselected indices are skipped. Rules are awaited sequentially so failure order matches declaration order. `stopOnFirst` ends after the first failing rule. A rule's awaited work is cold until validation begins.
+
+A scalar async rule skips itself when only a descendant path is selected. Decorators preserve the context data unchanged; lifted rules receive the same data as native async rules.
 
 ## Negative logic
 
@@ -25,6 +30,7 @@ MEDIUM — explicit task boundary with deterministic ordering.
 
 - **Q:** Run async checks from the synchronous API? **A:** No. **Rationale:** a caller must choose an async boundary. **Rejected:** implicit blocking.
 - **Q:** Run checks concurrently? **A:** Await in rule order. **Rationale:** failures and side effects remain predictable. **Rejected:** completion-order failures.
+- **Q:** Should context be mutable during async validation? **A:** Pass an immutable map through the run boundary. **Rationale:** nested and lifted rules observe one consistent request context. **Rejected:** per-rule global state.
 
 ## Referenced by
 
