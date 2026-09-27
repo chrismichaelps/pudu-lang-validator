@@ -11,6 +11,8 @@ path: src/PuduLangValidator/Rules/Comparison.pudu
 
 ## Algorithm and edge cases
 
+Equality checks attach `ComparisonValue` for caller message templates.
+
 Comparison uses Pudu `Eq` and exact values, with no culture or implicit conversion. `oneOf` checks the provided array in order; an empty candidate array never matches.
 
 ## Negative logic

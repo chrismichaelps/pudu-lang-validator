@@ -3,6 +3,7 @@ module PuduLangValidator.Rule
 
 import Std.Json as Json
 import Std.List as List
+import Std.Text as Text
 import PuduLangValidator.Result as Validation
 import PuduLangValidator.Selection as Selection
 
@@ -15,6 +16,7 @@ export type Check[T, V] = {
   condition: fn(T) -> Bool,
   message: Str,
   messageFactory: Option[fn(T, V) -> Str],
+  arguments: Array[(Str, fn(T, V) -> Str)],
   code: Str,
   severity: Validation.Severity,
   state: Str
@@ -57,6 +59,7 @@ export fn mustWithContext[T, V](
     condition: fn(_root: T) -> Bool { true },
     message: "The value of \{PropertyName\} did not satisfy its rule.",
     messageFactory: None,
+    arguments: [],
     code: "Predicate",
     severity: Validation.Error,
     state: ""
@@ -88,6 +91,28 @@ export fn withMessage[T, V](builder: RuleBuilder[T, V], message: Str) -> RuleBui
 export fn withMessageFrom[T, V](builder: RuleBuilder[T, V], message: fn(T, V) -> Str) -> RuleBuilder[T, V] {
   match List.last(&builder.checks) {
     case Some(check) => replaceLast(builder, Check{..check, messageFactory: Some(message)})
+    case None => builder
+  }
+}
+
+/// Set a named message value on the latest check.
+export fn withArgument[T, V](builder: RuleBuilder[T, V], name: Str, value: Str) -> RuleBuilder[T, V] {
+  withArgumentFrom(builder, name, fn(_root: T, _property: V) -> Str { value })
+}
+
+/// Compute a named message value only when the latest check fails.
+export fn withArgumentFrom[T, V](
+  builder: RuleBuilder[T, V], name: Str, value: fn(T, V) -> Str
+) -> RuleBuilder[T, V] {
+  if name.isEmpty() || name == "PropertyName" || name == "PropertyPath" || name == "PropertyValue" { return builder }
+  match List.last(&builder.checks) {
+    case Some(check) => {
+      var arguments: Array[(Str, fn(T, V) -> Str)] = []
+      for entry in check.arguments {
+        if entry[0] != name { arguments = arguments.push(entry) }
+      }
+      replaceLast(builder, Check{..check, arguments: arguments.push((name, value))})
+    }
     case None => builder
   }
 }
@@ -178,9 +203,7 @@ export fn build[T, V](builder: RuleBuilder[T, V]) -> Rule[T] {
             case Some(factory) => factory(root, value)
             case None => check.message
           }
-          let message = template.replace("\{PropertyName\}", displayName)
-            .replace("\{PropertyPath\}", name)
-            .replace("\{PropertyValue\}", value.toText())
+          let message = render(template, displayName, name, root, value, &check.arguments)
           failures = failures.push(Validation.Failure {
               propertyName: name, errorMessage: message, errorCode: check.code,
               severity: check.severity, customState: check.state
@@ -190,4 +213,50 @@ export fn build[T, V](builder: RuleBuilder[T, V]) -> Rule[T] {
       }
       failures
     } }
+}
+
+/// Render only placeholders present in the chosen template.
+fn render[T, V](
+  template: Str, displayName: Str, path: Str, root: T, value: V,
+  arguments: &Array[(Str, fn(T, V) -> Str)]
+) -> Str {
+  let chars = template.chars()
+  var pieces: Array[Str] = []
+  var literalStart = 0
+  var index = 0
+  while index < chars.length() {
+    if chars[index] != '{' {
+      index = index + 1
+      continue
+    }
+    var close = index + 1
+    while close < chars.length() && chars[close] != '}' { close = close + 1 }
+    if close == chars.length() { break }
+    let key = Text.take(Text.drop(template, index + 1), close - index - 1)
+    match argument(key, displayName, path, root, value, arguments) {
+      case Some(replacement) => {
+        pieces = pieces.push(Text.take(Text.drop(template, literalStart), index - literalStart))
+        pieces = pieces.push(replacement)
+        index = close + 1
+        literalStart = index
+      }
+      case None => { index = close + 1 }
+    }
+  }
+  pieces = pieces.push(Text.drop(template, literalStart))
+  Text.join(&pieces, "")
+}
+
+/// Resolve one placeholder without inspecting replacement text.
+fn argument[T, V](
+  name: Str, displayName: Str, path: Str, root: T, value: V,
+  arguments: &Array[(Str, fn(T, V) -> Str)]
+) -> Option[Str] {
+  if name == "PropertyName" { return Some(displayName) }
+  if name == "PropertyPath" { return Some(path) }
+  if name == "PropertyValue" { return Some(value.toText()) }
+  for entry in *arguments {
+    if entry[0] == name { return Some(entry[1](root, value)) }
+  }
+  None
 }

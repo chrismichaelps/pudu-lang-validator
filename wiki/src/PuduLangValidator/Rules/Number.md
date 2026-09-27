@@ -13,6 +13,8 @@ Adds `greaterThan`, `greaterThanOrEqualTo`, `lessThan`, `lessThanOrEqualTo`, `in
 
 Numeric bounds are rendered into failure messages when a check fails.
 
+Single-value checks attach `ComparisonValue`; intervals attach `From` and `To`. Caller messages may reference those values.
+
 Bounds are compared with normal Pudu integer operators. A reversed interval simply fails every value. No arithmetic difference is computed, so extreme integer bounds cannot overflow.
 
 ## Negative logic

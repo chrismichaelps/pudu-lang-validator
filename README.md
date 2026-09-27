@@ -69,6 +69,8 @@ Rule sets, property selection, cascade behavior, conditions, nested paths, colle
 
 Use `Validator.includeProperties(Validator.defaults(), ["orders[].sku"])` to validate one field across every item in a collection. Concrete indices, including nested indices, remain in failure paths.
 
+Messages support `{PropertyName}`, `{PropertyPath}`, and `{PropertyValue}`. Built-in rules expose their bounds and measured values as named arguments; `Rule.withArgument` and `Rule.withArgumentFrom` let application rules provide their own.
+
 ## Developing
 
 ```sh

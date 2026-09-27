@@ -11,6 +11,8 @@ path: src/PuduLangValidator/Rules/Decimal.pudu
 
 ## Algorithm and edge cases
 
+Precision checks attach expected precision and scale plus the measured digit count and actual scale as message arguments.
+
 Ignore a leading sign and a decimal point; count remaining digits. When requested, remove fractional trailing zeroes before counting. A zero still has one significant digit. `1.2300` has scale four or two according to the flag. Reversed or negative configuration bounds fail the check.
 
 ## Negative logic

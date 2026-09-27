@@ -11,6 +11,8 @@ Generic `greaterThan`, `greaterThanOrEqualTo`, `lessThan`, `lessThanOrEqualTo`, 
 
 ## Algorithm and edge cases
 
+Single bounds attach `ComparisonValue`; intervals attach `From` and `To` for caller message templates.
+
 Use `Ord.before` without subtraction, so large values cannot overflow a difference. Inclusive bounds admit endpoints; exclusive bounds reject them. A reversed interval simply matches no values.
 
 ## Negative logic

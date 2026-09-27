@@ -15,7 +15,7 @@ The bootstrap owns `src/PuduLangValidator/**`, `src/Main.pudu`, their mirrors, p
 
 ## Exact next action
 
-Unify wildcard property path selection on issue #7, test sync and async nested arrays, then review source parity before integration into `dev`.
+Add message arguments on issue #9, test bound metadata and per-check isolation, then review source parity before integration into `dev`.
 
 ## Referenced by
 
