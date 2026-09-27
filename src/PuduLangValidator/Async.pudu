@@ -2,6 +2,7 @@
 module PuduLangValidator.Async
 
 import Std.List as List
+import Std.Text as Text
 import PuduLangValidator.Result as Validation
 import PuduLangValidator.Rule as Rule
 import PuduLangValidator.Validator as Validator
@@ -130,6 +131,71 @@ export fn when[T](rule: AsyncRule[T], condition: fn(T) -> Bool) -> AsyncRule[T] 
     } }
 }
 
+/// Await a condition before running an asynchronous rule.
+export fn whenAsync[T](rule: AsyncRule[T], condition: async fn(T, Rule.ContextData) -> Bool) -> AsyncRule[T] {
+  let name = rule.name
+  let sets = rule.ruleSets
+  AsyncRule{name: name, ruleSets: sets, run: async fn(root: T, options: Validator.Options, data: Rule.ContextData) -> Array[Validation.Failure] {
+      if condition(root, data).await { rule.run(root, options, data).await } else { [] }
+    } }
+}
+
+/// Await application code that reports structured failures.
+export fn customAsync[T](
+  name: Str, check: async fn(T, Rule.ContextData) -> Array[Validation.Failure]
+) -> AsyncRule[T] {
+  AsyncRule{name: name, ruleSets: [], run: async fn(root: T, _options: Validator.Options, data: Rule.ContextData) -> Array[Validation.Failure] {
+      check(root, data).await
+    } }
+}
+
+/// Await a child validator and prefix its failure paths.
+export fn setValidatorAsync[T, V](name: Str, select: fn(T) -> V, child: AsyncValidator[V]) -> AsyncRule[T] {
+  let sets = childSets(&child)
+  AsyncRule{name: name, ruleSets: sets, run: async fn(root: T, options: Validator.Options, data: Rule.ContextData) -> Array[Validation.Failure] {
+      let inner = Validator.Options{..options, properties: childProperties(name, &options.properties)}
+      prefixFailures(name, &validateAsyncWithData(&child, select(root), inner, data).await.errors)
+    } }
+}
+
+/// Skip an absent child and await validation when a value is present.
+export fn setOptionalValidatorAsync[T, V](
+  name: Str, select: fn(T) -> Option[V], child: AsyncValidator[V]
+) -> AsyncRule[T] {
+  let sets = childSets(&child)
+  AsyncRule{name: name, ruleSets: sets, run: async fn(root: T, options: Validator.Options, data: Rule.ContextData) -> Array[Validation.Failure] {
+      match select(root) {
+        case Some(value) => {
+          let inner = Validator.Options{..options, properties: childProperties(name, &options.properties)}
+          prefixFailures(name, &validateAsyncWithData(&child, value, inner, data).await.errors)
+        }
+        case None => []
+      }
+    } }
+}
+
+/// Await one child validator per selected array element in source order.
+export fn forEachValidatorAsync[T, V](
+  name: Str, select: fn(T) -> Array[V], child: AsyncValidator[V]
+) -> AsyncRule[T] {
+  let sets = childSets(&child)
+  AsyncRule{name: name, ruleSets: sets, run: async fn(root: T, options: Validator.Options, data: Rule.ContextData) -> Array[Validation.Failure] {
+      var failures: Array[Validation.Failure] = []
+      var index = 0
+      for value in select(root) {
+        let path = name + "[" + show(index) + "]"
+        if selectedElement(name, path, &options.properties) {
+          let inner = Validator.Options{..options, properties: childProperties(path, &options.properties)}
+          for failure in prefixFailures(path, &validateAsyncWithData(&child, value, inner, data).await.errors) {
+            failures = failures.push(failure)
+          }
+        }
+        index = index + 1
+      }
+      failures
+    } }
+}
+
 /// A validator with no asynchronous rules.
 export fn create[T]() -> AsyncValidator[T] { AsyncValidator{rules: [], stop: false} }
 
@@ -173,5 +239,37 @@ export async fn validateAsyncWithData[T](
 /// Whether an indexed element is part of property selection.
 fn selectedElement(name: Str, path: Str, properties: &Array[Str]) -> Bool {
   properties.isEmpty() || List.any(properties, |wanted: Str|
-    wanted == name || wanted == path || wanted.startsWith(path + "."))
+    wanted == name || wanted == path || wanted.startsWith(path + ".") ||
+    name.startsWith(wanted + ".") || name.startsWith(wanted + "["))
+}
+
+/// Rule-set tags visible through a nested async validator.
+fn childSets[V](child: &AsyncValidator[V]) -> Array[Str] {
+  var sets: Array[Str] = []
+  for rule in child.rules {
+    if rule.ruleSets.isEmpty() && !sets.contains("default") { sets = sets.push("default") }
+    for name in rule.ruleSets {
+      if !sets.contains(name) { sets = sets.push(name) }
+    }
+  }
+  sets
+}
+
+/// Translate root selections into paths relative to a child.
+fn childProperties(name: Str, properties: &Array[Str]) -> Array[Str] {
+  if name.isEmpty() { return *properties }
+  var selected: Array[Str] = []
+  for wanted in *properties {
+    if wanted == name || name.startsWith(wanted + ".") || name.startsWith(wanted + "[") { return [] }
+    if wanted.startsWith(name + ".") { selected = selected.push(Text.drop(wanted, name.length() + 1)) }
+  }
+  selected
+}
+
+/// Add the parent path to each child failure exactly once.
+fn prefixFailures(name: Str, failures: &Array[Validation.Failure]) -> Array[Validation.Failure] {
+  failures.map(|failure: Validation.Failure| Validation.Failure {
+      ..failure,
+      propertyName: if name.isEmpty() { failure.propertyName } else if failure.propertyName.isEmpty() { name } else { name + "." + failure.propertyName }
+    })
 }
