@@ -1,0 +1,53 @@
+/** @Validation.Result.Model — preserves ordered validation failures */
+module PuduLangValidator.Result
+
+import Std.Map as Map
+import Std.Text as Text
+
+/** @Validation.Result.Severity — classifies a failed rule */
+export type Severity = Error | Warning | Info
+
+/** @Validation.Result.Failure — locates one failed check */
+export type Failure = {
+  propertyName: Str,
+  errorMessage: Str,
+  errorCode: Str,
+  severity: Severity,
+  customState: Str
+}
+
+/** @Validation.Result.ValidationResult — retains failures in rule order */
+export type ValidationResult = { isValid: Bool, errors: Array[Failure] }
+
+/// A result whose validity agrees with its failures.
+export fn fromFailures(errors: Array[Failure]) -> ValidationResult {
+  ValidationResult{isValid: errors.isEmpty(), errors: errors}
+}
+
+/// The failure messages joined in encounter order.
+export fn messages(result: &ValidationResult, separator: Str) -> Str {
+  Text.join(&result.errors.map(|failure: Failure| failure.errorMessage), separator)
+}
+
+/// Failures at exactly one property path.
+export fn forProperty(result: &ValidationResult, name: Str) -> Array[Failure] {
+  result.errors.filter(|failure: Failure| failure.propertyName == name)
+}
+
+/// Group messages by exact failure path, preserving order within each path.
+export fn toDictionary(result: &ValidationResult) -> Map[Str, Array[Str]] {
+  var grouped: Map[Str, Array[Str]] = mapOf([])
+  for failure in result.errors {
+    let existing = match Map.get(&grouped, failure.propertyName) {
+      case Some(held) => held
+      case None => []
+    }
+    grouped = grouped.insert(failure.propertyName, existing.push(failure.errorMessage))
+  }
+  grouped
+}
+
+/// Keep the source on success, or return every validation failure.
+export fn toResult[T](result: &ValidationResult, value: T) -> Result[T, Array[Failure]] {
+  if result.isValid { Ok(value) } else { Err(result.errors) }
+}

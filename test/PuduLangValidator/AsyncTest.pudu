@@ -1,0 +1,50 @@
+/** @Test.Validation.Async.Suite — checks awaited failure order */
+module PuduLangValidator.AsyncTest
+
+import Std.Test as Test
+import PuduLangValidator.Async as Async
+import PuduLangValidator.Result as Validation
+import PuduLangValidator.Rule as Rule
+import PuduLangValidator.Validator as Validator
+
+type Item = { key: Str, count: Int, tags: Array[Str] }
+
+async fn keyExists(_root: Item, key: Str) -> Bool { key == "present" }
+
+async fn included(tag: Str) -> Bool { tag != "skip" }
+
+async fn longEnough(_root: Item, tag: Str) -> Bool { tag.length() >= 3 }
+
+async fn main() -> Int {
+  let asyncRule = Async.mustAsync("key", |item: Item| item.key, keyExists,
+    "The key was not found.", "MissingKey")
+  let syncRule = Rule.build(Rule.withMessage(Rule.must(Rule.ruleFor("count", |item: Item| item.count),
+        |count: Int| count > 0), "Count must be positive."))
+  let empty: Async.AsyncValidator[Item] = Async.create()
+  let validator = Async.add(Async.add(empty, asyncRule), Async.fromSync(syncRule))
+  let bad = Async.validateAsync(&validator, Item{key: "absent", count: 0, tags: []}).await
+  let good = Async.validateAsync(&validator, Item{key: "present", count: 1, tags: []}).await
+  let tagsRule = Async.forEachWhereAsync("tags", |item: Item| item.tags, included, longEnough,
+    "Tag \{CollectionIndex\} is short.", "TagLength")
+  let tags = Async.validateAsync(&Async.add(Async.create(), tagsRule),
+    Item{key: "present", count: 1, tags: ["skip", "x", "long"]}).await
+  let selectedTags = Async.validateAsyncWith(&Async.add(Async.create(), tagsRule),
+    Item{key: "present", count: 1, tags: ["x", "z"]},
+    Validator.includeProperties(Validator.defaults(), ["tags[1]"])).await
+  let named = Async.inRuleSet(Async.withSeverity(asyncRule, Validation.Warning), "lookup")
+  let namedValidator = Async.add(Async.create(), named)
+  let defaultNamed = Async.validateAsync(&namedValidator, Item{key: "absent", count: 0, tags: []}).await
+  let chosenNamed = Async.validateAsyncWith(&namedValidator, Item{key: "absent", count: 0, tags: []},
+    Validator.onlyRuleSets(["lookup"])).await
+  let checks = Test.suite("Async", &[
+      Test.equals("async and sync failures keep order", &bad.errors.map(|failure: Validation.Failure| failure.propertyName),
+          &["key", "count"]),
+      Test.equals("successful async validation is valid", &good.isValid, &true),
+      Test.equals("async filter preserves source index", &tags.errors[0].propertyName, &"tags[1]"),
+      Test.equals("async collection message renders index", &tags.errors[0].errorMessage, &"Tag 1 is short."),
+      Test.equals("async property selection keeps one element", &selectedTags.errors[0].propertyName, &"tags[1]"),
+      Test.equals("async named set is absent from defaults", &defaultNamed.errors.length(), &0),
+      Test.equals("async named set retains severity", &chosenNamed.errors[0].severity, &Validation.Warning)
+    ])
+  Test.report(&Test.run(&checks))
+}

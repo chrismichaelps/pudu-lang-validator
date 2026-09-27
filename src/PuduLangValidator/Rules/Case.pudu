@@ -1,0 +1,13 @@
+/** @Validation.Rules.Case.Module — dispatches closed sum-type cases */
+module PuduLangValidator.Rules.Case
+
+import PuduLangValidator.Rule as Rule
+import PuduLangValidator.Rules.Child as Child
+import PuduLangValidator.Validator as Validator
+
+/// Validate one selected variant with its own typed validator.
+export fn forCase[T, V](
+  name: Str, select: fn(T) -> Option[V], validator: Validator.Validator[V]
+) -> Rule.Rule[T] {
+  Child.setOptionalValidator(name, select, validator)
+}

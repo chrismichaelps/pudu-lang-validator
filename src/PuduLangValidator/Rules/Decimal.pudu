@@ -1,0 +1,33 @@
+/** @Validation.Rules.Decimal.Module — checks exact decimal shape */
+module PuduLangValidator.Rules.Decimal
+
+import Std.Text as Text
+import PuduLangValidator.Rule as Rule
+
+/** @Validation.Rules.Decimal.Shape — counts displayed decimal digits */
+type Shape = { precision: Int, scale: Int }
+
+/// Require at most `precision` digits, with at most `scale` after the point.
+export fn precisionScale[T](
+  builder: Rule.RuleBuilder[T, Decimal], precision: Int, scale: Int, ignoreTrailingZeros: Bool
+) -> Rule.RuleBuilder[T, Decimal] {
+  Rule.withCode(Rule.withMessage(Rule.must(builder, |value: Decimal| {
+          let actual = shape(value, ignoreTrailingZeros)
+          precision >= 1 && scale >= 0 && scale <= precision &&
+          actual.precision <= precision && actual.scale <= scale
+        }), "Decimal exceeds the allowed precision or scale."), "PrecisionScale")
+}
+
+/// Count significant integer digits and retained fractional digits.
+fn shape(value: Decimal, ignoreTrailingZeros: Bool) -> Shape {
+  let rendered = value.toText()
+  let unsigned = if rendered.startsWith("-") { Text.drop(rendered, 1) } else { rendered }
+  let parts = unsigned.split(".")
+  let whole = Text.dropWhile(parts[0], |character: Char| character == '0')
+  let fractional = if parts.length() > 1 { parts[1] } else { "" }
+  let kept = if ignoreTrailingZeros {
+    Text.dropWhileEnd(fractional, |character: Char| character == '0')
+  } else { fractional }
+  let digits = whole.length() + kept.length()
+  Shape{precision: if digits == 0 { 1 } else { digits }, scale: kept.length()}
+}

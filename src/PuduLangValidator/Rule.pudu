@@ -1,0 +1,193 @@
+/** @Validation.Rule.Engine — evaluates typed property checks */
+module PuduLangValidator.Rule
+
+import Std.Json as Json
+import Std.List as List
+import PuduLangValidator.Result as Validation
+
+/** @Validation.Rule.ContextData — shares immutable application data */
+export type ContextData = Map[Str, Json.Json]
+
+/** @Validation.Rule.Check — binds predicate and failure metadata */
+export type Check[T, V] = {
+  test: fn(T, V, ContextData) -> Bool,
+  condition: fn(T) -> Bool,
+  message: Str,
+  messageFactory: Option[fn(T, V) -> Str],
+  code: Str,
+  severity: Validation.Severity,
+  state: Str
+}
+
+/** @Validation.Rule.RuleBuilder — keeps property checks typed until build */
+export type RuleBuilder[T, V] = {
+  name: Str,
+  displayName: Str,
+  select: fn(T) -> V,
+  checks: Array[Check[T, V]],
+  ruleSets: Array[Str],
+  stop: Bool
+}
+
+/** @Validation.Rule.Rule — runs a property rule over its source */
+export type Rule[T] = { name: Str, ruleSets: Array[Str], run: fn(T, Array[Str], Bool, Array[Str], ContextData) -> Array[Validation.Failure] }
+
+/// Start a rule with its public property path and typed selector.
+export fn ruleFor[T, V](name: Str, select: fn(T) -> V) -> RuleBuilder[T, V] {
+  RuleBuilder{name: name, displayName: name, select: select, checks: [], ruleSets: [], stop: false}
+}
+
+/// Require a property predicate to hold.
+export fn must[T, V](builder: RuleBuilder[T, V], test: fn(V) -> Bool) -> RuleBuilder[T, V] {
+  mustWith(builder, fn(_root: T, value: V) -> Bool { test(value) })
+}
+
+/// Require a predicate that may inspect the source and property.
+export fn mustWith[T, V](builder: RuleBuilder[T, V], test: fn(T, V) -> Bool) -> RuleBuilder[T, V] {
+  mustWithContext(builder, fn(root: T, value: V, _data: ContextData) -> Bool { test(root, value) })
+}
+
+/// Require a predicate that may read immutable root context data.
+export fn mustWithContext[T, V](
+  builder: RuleBuilder[T, V], test: fn(T, V, ContextData) -> Bool
+) -> RuleBuilder[T, V] {
+  let check = Check {
+    test: test,
+    condition: fn(_root: T) -> Bool { true },
+    message: "The value of \{PropertyName\} did not satisfy its rule.",
+    messageFactory: None,
+    code: "Predicate",
+    severity: Validation.Error,
+    state: ""
+  }
+  RuleBuilder{..builder, checks: builder.checks.push(check)}
+}
+
+/// Replace the most recent check without changing its position.
+fn replaceLast[T, V](builder: RuleBuilder[T, V], replacement: Check[T, V]) -> RuleBuilder[T, V] {
+  var checks: Array[Check[T, V]] = []
+  var index = 0
+  let last = builder.checks.length() - 1
+  for check in builder.checks {
+    checks = checks.push(if index == last { replacement } else { check })
+    index = index + 1
+  }
+  RuleBuilder{..builder, checks: checks}
+}
+
+/// Use this message for the most recent failed check.
+export fn withMessage[T, V](builder: RuleBuilder[T, V], message: Str) -> RuleBuilder[T, V] {
+  match List.last(&builder.checks) {
+    case Some(check) => replaceLast(builder, Check{..check, message: message, messageFactory: None})
+    case None => builder
+  }
+}
+
+/// Compute the latest failure message from its source and property.
+export fn withMessageFrom[T, V](builder: RuleBuilder[T, V], message: fn(T, V) -> Str) -> RuleBuilder[T, V] {
+  match List.last(&builder.checks) {
+    case Some(check) => replaceLast(builder, Check{..check, messageFactory: Some(message)})
+    case None => builder
+  }
+}
+
+/// Use a readable name in message placeholders without changing the failure path.
+export fn withName[T, V](builder: RuleBuilder[T, V], name: Str) -> RuleBuilder[T, V] {
+  RuleBuilder{..builder, displayName: name}
+}
+
+/// Report failures at this path instead of the rule's original path.
+export fn overridePropertyName[T, V](builder: RuleBuilder[T, V], path: Str) -> RuleBuilder[T, V] {
+  RuleBuilder{..builder, name: path}
+}
+
+/// Use this stable error code for the most recent check.
+export fn withCode[T, V](builder: RuleBuilder[T, V], code: Str) -> RuleBuilder[T, V] {
+  match List.last(&builder.checks) {
+    case Some(check) => replaceLast(builder, Check{..check, code: code})
+    case None => builder
+  }
+}
+
+/// Classify the most recent failure.
+export fn withSeverity[T, V](builder: RuleBuilder[T, V], severity: Validation.Severity) -> RuleBuilder[T, V] {
+  match List.last(&builder.checks) {
+    case Some(check) => replaceLast(builder, Check{..check, severity: severity})
+    case None => builder
+  }
+}
+
+/// Attach application state to the most recent failure.
+export fn withState[T, V](builder: RuleBuilder[T, V], state: Str) -> RuleBuilder[T, V] {
+  match List.last(&builder.checks) {
+    case Some(check) => replaceLast(builder, Check{..check, state: state})
+    case None => builder
+  }
+}
+
+/// Run every check in this chain only when the condition holds.
+export fn when[T, V](builder: RuleBuilder[T, V], condition: fn(T) -> Bool) -> RuleBuilder[T, V] {
+  RuleBuilder{..builder, checks: builder.checks.map(|check: Check[T, V]| Check {
+        ..check, condition: fn(root: T) -> Bool { check.condition(root) && condition(root) }
+      }) }
+}
+
+/// Skip every check in this chain when the condition holds.
+export fn unless[T, V](builder: RuleBuilder[T, V], condition: fn(T) -> Bool) -> RuleBuilder[T, V] {
+  when(builder, fn(root: T) -> Bool { !condition(root) })
+}
+
+/// Gate only the most recently added check.
+export fn whenCurrent[T, V](builder: RuleBuilder[T, V], condition: fn(T) -> Bool) -> RuleBuilder[T, V] {
+  match List.last(&builder.checks) {
+    case Some(check) => replaceLast(builder, Check {
+        ..check, condition: fn(root: T) -> Bool { check.condition(root) && condition(root) }
+      })
+    case None => builder
+  }
+}
+
+/// Skip only the most recent check when the condition holds.
+export fn unlessCurrent[T, V](builder: RuleBuilder[T, V], condition: fn(T) -> Bool) -> RuleBuilder[T, V] {
+  whenCurrent(builder, fn(root: T) -> Bool { !condition(root) })
+}
+
+/// Stop this property's chain after its first failure.
+export fn stopOnFirst[T, V](builder: RuleBuilder[T, V]) -> RuleBuilder[T, V] {
+  RuleBuilder{..builder, stop: true}
+}
+
+/// Run this rule when the named rule set is selected.
+export fn inRuleSet[T, V](builder: RuleBuilder[T, V], name: Str) -> RuleBuilder[T, V] {
+  if builder.ruleSets.contains(name) { builder } else { RuleBuilder{..builder, ruleSets: builder.ruleSets.push(name)} }
+}
+
+/// Freeze a property rule for use in a validator.
+export fn build[T, V](builder: RuleBuilder[T, V]) -> Rule[T] {
+  let name = builder.name
+  let displayName = builder.displayName
+  let sets = builder.ruleSets
+  Rule{name: name, ruleSets: sets, run: fn(root: T, _sets: Array[Str], _defaults: Bool, properties: Array[Str], data: ContextData) -> Array[Validation.Failure] {
+      if !properties.isEmpty() && !List.any(&properties, |wanted: Str|
+        wanted == name || name.startsWith(wanted + ".") || name.startsWith(wanted + "[")) { return [] }
+      let value = builder.select(root)
+      var failures: Array[Validation.Failure] = []
+      for check in builder.checks {
+        if check.condition(root) && !check.test(root, value, data) {
+          let template = match check.messageFactory {
+            case Some(factory) => factory(root, value)
+            case None => check.message
+          }
+          let message = template.replace("\{PropertyName\}", displayName)
+            .replace("\{PropertyPath\}", name)
+            .replace("\{PropertyValue\}", value.toText())
+          failures = failures.push(Validation.Failure {
+              propertyName: name, errorMessage: message, errorCode: check.code,
+              severity: check.severity, customState: check.state
+            })
+          if builder.stop { break }
+        }
+      }
+      failures
+    } }
+}

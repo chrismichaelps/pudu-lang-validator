@@ -1,0 +1,25 @@
+/** @Validation.Http.Adapter — maps failures into Pudu problems */
+module PuduLangValidator.Http
+
+import Std.App.Problem as Problem
+import Std.Http as Http
+import Std.Validate as Validate
+import PuduLangValidator.Result as Validation
+
+/// Convert ordered validator failures to Pudu's standard form report.
+export fn toReport(result: &Validation.ValidationResult) -> Validate.Report {
+  Validate.Report{failures: result.errors.map(|failure: Validation.Failure| Validate.Failure {
+        field: failure.propertyName,
+        expected: failure.errorMessage
+      }) }
+}
+
+/// Build a validation problem from a failed result.
+export fn problem(result: &Validation.ValidationResult) -> Problem.Problem {
+  Problem.fromReport(&toReport(result))
+}
+
+/// Answer an HTTP validation problem for a failed result.
+export fn respond(result: &Validation.ValidationResult) -> Http.Response {
+  Problem.respond(&problem(result))
+}

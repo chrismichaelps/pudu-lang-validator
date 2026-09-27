@@ -1,0 +1,44 @@
+/** @Test.Validation.Rules.Suite — checks built-in rule boundaries */
+module PuduLangValidator.RulesTest
+
+import Std.Test as Test
+import PuduLangValidator.Rule as Rule
+import PuduLangValidator.Rules.Decimal as DecimalRule
+import PuduLangValidator.Rules.Presence as PresenceRule
+import PuduLangValidator.Rules.Text as TextRule
+import PuduLangValidator.Validator as Validator
+
+type Fields = { text: Str, amount: Decimal, optional: Option[Str] }
+
+fn textRule() -> Validator.Validator[Fields] {
+  let rule = Rule.build(TextRule.creditCard(Rule.ruleFor("text", |item: Fields| item.text)))
+  Validator.add(Validator.create(), rule)
+}
+
+fn amountRule(ignore: Bool) -> Validator.Validator[Fields] {
+  let rule = Rule.build(DecimalRule.precisionScale(Rule.ruleFor("amount", |item: Fields| item.amount), 5, 2, ignore))
+  Validator.add(Validator.create(), rule)
+}
+
+fn optionalRule() -> Validator.Validator[Fields] {
+  let rule = Rule.build(PresenceRule.notEmpty(Rule.ruleFor("optional", |item: Fields| item.optional)))
+  Validator.add(Validator.create(), rule)
+}
+
+fn main() -> Int {
+  let card = textRule()
+  let strict = amountRule(false)
+  let trimmed = amountRule(true)
+  let optional = optionalRule()
+  let valid = Fields{text: "4111 1111 1111 1111", amount: 123.4500d, optional: Some("Ada")}
+  let bad = Fields{text: "4111 1111 1111 1112", amount: 123.4500d, optional: None}
+  let checks = Test.suite("Rules", &[
+      Test.equals("card checksum accepts valid test number", &Validator.validate(&card, valid).isValid, &true),
+      Test.equals("card checksum rejects altered last digit", &Validator.validate(&card, bad).isValid, &false),
+      Test.equals("precision counts trailing zeroes", &Validator.validate(&strict, valid).isValid, &false),
+      Test.equals("precision can ignore trailing zeroes", &Validator.validate(&trimmed, valid).isValid, &true),
+      Test.equals("optional text rejects absence", &Validator.validate(&optional, bad).isValid, &false),
+      Test.equals("optional text accepts content", &Validator.validate(&optional, valid).isValid, &true)
+    ])
+  Test.report(&Test.run(&checks))
+}

@@ -1,0 +1,28 @@
+/** @Validation.Rules.Presence.Module — checks explicit optional values */
+module PuduLangValidator.Rules.Presence
+
+import PuduLangValidator.Rule as Rule
+
+/// Require an optional property to contain a value.
+export fn notNull[T, V](builder: Rule.RuleBuilder[T, Option[V]]) -> Rule.RuleBuilder[T, Option[V]] {
+  Rule.withCode(Rule.withMessage(Rule.must(builder, |value: Option[V]| match value {
+          case Some(_) => true
+          case None => false
+        }), "A value is required."), "NotNull")
+}
+
+/// Require an optional property to be absent.
+export fn isNull[T, V](builder: Rule.RuleBuilder[T, Option[V]]) -> Rule.RuleBuilder[T, Option[V]] {
+  Rule.withCode(Rule.withMessage(Rule.must(builder, |value: Option[V]| match value {
+          case Some(_) => false
+          case None => true
+        }), "A value must be absent."), "Null")
+}
+
+/// Reject absent, empty, and whitespace-only optional text.
+export fn notEmpty[T](builder: Rule.RuleBuilder[T, Option[Str]]) -> Rule.RuleBuilder[T, Option[Str]] {
+  Rule.withCode(Rule.withMessage(Rule.must(builder, |value: Option[Str]| match value {
+          case Some(text) => !text.trim().isEmpty()
+          case None => false
+        }), "Text is required."), "NotEmpty")
+}

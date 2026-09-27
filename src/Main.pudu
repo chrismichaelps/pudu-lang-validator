@@ -1,0 +1,23 @@
+/** @Validation.Cli.Entry — identifies the package command */
+module Main
+
+import Std.Env as Env
+import Std.Io as Io
+
+/// Print version or usage; model validation lives in the library.
+fn main() -> Int {
+  match Env.at(0) {
+    case Some("--version") => {
+      let _written = Io.writeLine("pudu-lang-validator 0.1.0")
+      0
+    }
+    case None | Some("--help") => {
+      let _written = Io.writeLine("pudu-lang-validator: import PuduLangValidator.Rule and PuduLangValidator.Validator in your Pudu program")
+      0
+    }
+    case Some(_) => {
+      let _written = Io.writeErrorLine("Unknown option. Use --help or --version.")
+      2
+    }
+  }
+}

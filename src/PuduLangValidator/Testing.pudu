@@ -1,0 +1,26 @@
+/** @Validation.Testing.Predicates — queries structured validation results */
+module PuduLangValidator.Testing
+
+import Std.List as List
+import PuduLangValidator.Result as Validation
+
+/// Whether a result reports a failure at this exact path.
+export fn hasErrorFor(result: &Validation.ValidationResult, path: Str) -> Bool {
+  List.any(&result.errors, |failure: Validation.Failure| failure.propertyName == path)
+}
+
+/// Whether a result reports no failure at this exact path.
+export fn hasNoErrorFor(result: &Validation.ValidationResult, path: Str) -> Bool {
+  !hasErrorFor(result, path)
+}
+
+/// Whether any failure has the stable error code.
+export fn hasCode(result: &Validation.ValidationResult, code: Str) -> Bool {
+  List.any(&result.errors, |failure: Validation.Failure| failure.errorCode == code)
+}
+
+/// Whether every failure is confined to the named paths, with at least one failure.
+export fn onlyErrorsFor(result: &Validation.ValidationResult, paths: Array[Str]) -> Bool {
+  !result.errors.isEmpty() && List.all(&result.errors,
+    |failure: Validation.Failure| paths.contains(failure.propertyName))
+}

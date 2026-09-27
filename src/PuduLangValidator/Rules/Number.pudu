@@ -1,0 +1,70 @@
+/** @Validation.Rules.Number.Module — checks integer property bounds */
+module PuduLangValidator.Rules.Number
+
+import PuduLangValidator.Rule as Rule
+
+/// Require a value greater than the bound.
+export fn greaterThan[T](builder: Rule.RuleBuilder[T, Int], bound: Int) -> Rule.RuleBuilder[T, Int] {
+  Rule.withCode(Rule.withMessageFrom(Rule.must(builder, |value: Int| value > bound),
+      fn(_root: T, _value: Int) -> Str { "Number must be greater than " + show(bound) + "." }), "GreaterThan")
+}
+
+/// Require a value at least as large as the bound.
+export fn greaterThanOrEqualTo[T](builder: Rule.RuleBuilder[T, Int], bound: Int) -> Rule.RuleBuilder[T, Int] {
+  Rule.withCode(Rule.withMessageFrom(Rule.must(builder, |value: Int| value >= bound),
+      fn(_root: T, _value: Int) -> Str { "Number must be at least " + show(bound) + "." }), "GreaterThanOrEqualTo")
+}
+
+/// Require a value below the bound.
+export fn lessThan[T](builder: Rule.RuleBuilder[T, Int], bound: Int) -> Rule.RuleBuilder[T, Int] {
+  Rule.withCode(Rule.withMessageFrom(Rule.must(builder, |value: Int| value < bound),
+      fn(_root: T, _value: Int) -> Str { "Number must be less than " + show(bound) + "." }), "LessThan")
+}
+
+/// Require a value no larger than the bound.
+export fn lessThanOrEqualTo[T](builder: Rule.RuleBuilder[T, Int], bound: Int) -> Rule.RuleBuilder[T, Int] {
+  Rule.withCode(Rule.withMessageFrom(Rule.must(builder, |value: Int| value <= bound),
+      fn(_root: T, _value: Int) -> Str { "Number must be at most " + show(bound) + "." }), "LessThanOrEqualTo")
+}
+
+/// Require a value within inclusive bounds.
+export fn inclusiveBetween[T](builder: Rule.RuleBuilder[T, Int], low: Int, high: Int) -> Rule.RuleBuilder[T, Int] {
+  Rule.withCode(Rule.withMessageFrom(Rule.must(builder, |value: Int| value >= low && value <= high),
+      fn(_root: T, _value: Int) -> Str { "Number must be from " + show(low) + " through " + show(high) + "." }), "InclusiveBetween")
+}
+
+/// Require a value strictly inside the bounds.
+export fn exclusiveBetween[T](builder: Rule.RuleBuilder[T, Int], low: Int, high: Int) -> Rule.RuleBuilder[T, Int] {
+  Rule.withCode(Rule.withMessageFrom(Rule.must(builder, |value: Int| value > low && value < high),
+      fn(_root: T, _value: Int) -> Str { "Number must be between " + show(low) + " and " + show(high) + ", excluding both." }), "ExclusiveBetween")
+}
+
+/// Require a value equal to the expected integer.
+export fn equal[T](builder: Rule.RuleBuilder[T, Int], expected: Int) -> Rule.RuleBuilder[T, Int] {
+  Rule.withCode(Rule.withMessageFrom(Rule.must(builder, |value: Int| value == expected),
+      fn(_root: T, _value: Int) -> Str { "Number must equal " + show(expected) + "." }), "Equal")
+}
+
+/// Require a value different from the excluded integer.
+export fn notEqual[T](builder: Rule.RuleBuilder[T, Int], excluded: Int) -> Rule.RuleBuilder[T, Int] {
+  Rule.withCode(Rule.withMessageFrom(Rule.must(builder, |value: Int| value != excluded),
+      fn(_root: T, _value: Int) -> Str { "Number must differ from " + show(excluded) + "." }), "NotEqual")
+}
+
+/// Reject the integer default value of zero.
+export fn notEmpty[T](builder: Rule.RuleBuilder[T, Int]) -> Rule.RuleBuilder[T, Int] {
+  Rule.withCode(Rule.withMessage(Rule.must(builder, |value: Int| value != 0),
+      "Number must be nonzero."), "NotEmpty")
+}
+
+/// Require the integer default value of zero.
+export fn empty[T](builder: Rule.RuleBuilder[T, Int]) -> Rule.RuleBuilder[T, Int] {
+  Rule.withCode(Rule.withMessage(Rule.must(builder, |value: Int| value == 0),
+      "Number must be zero."), "Empty")
+}
+
+/// Require membership among explicit numeric enum discriminants.
+export fn isInEnum[T](builder: Rule.RuleBuilder[T, Int], valid: Array[Int]) -> Rule.RuleBuilder[T, Int] {
+  Rule.withCode(Rule.withMessage(Rule.must(builder, |value: Int| valid.contains(value)),
+      "Number is outside the named cases."), "IsInEnum")
+}

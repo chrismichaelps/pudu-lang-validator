@@ -1,0 +1,41 @@
+/** @Validation.Localization.Catalog — resolves application message text */
+module PuduLangValidator.Localization
+
+import Std.Map as Map
+import PuduLangValidator.Rule as Rule
+
+/** @Validation.Localization.Catalog.Value — maps locale and code to text */
+export type Catalog = { entries: Map[(Str, Str), Str] }
+
+/// An empty application message catalog.
+export fn empty() -> Catalog { Catalog{entries: mapOf([])} }
+
+/// Add or replace one message for a locale and rule code.
+export fn withMessage(catalog: Catalog, locale: Str, code: Str, message: Str) -> Catalog {
+  Catalog{entries: catalog.entries.insert((locale.toLower(), code), message)}
+}
+
+/// Resolve exact locale, then language subtag, then caller fallback.
+export fn messageFor(catalog: &Catalog, locale: Str, code: Str, fallback: Str) -> Str {
+  let normalized = locale.toLower()
+  match Map.get(&catalog.entries, (normalized, code)) {
+    case Some(found) => found
+    case None => {
+      let language = normalized.split("-")[0]
+      match Map.get(&catalog.entries, (language, code)) {
+        case Some(found) => found
+        case None => fallback
+      }
+    }
+  }
+}
+
+/// Use the model's locale to choose the latest rule's message.
+export fn localized[T, V](
+  builder: Rule.RuleBuilder[T, V], catalog: Catalog, locale: fn(T) -> Str,
+  code: Str, fallback: Str
+) -> Rule.RuleBuilder[T, V] {
+  Rule.withMessageFrom(builder, fn(root: T, _value: V) -> Str {
+      messageFor(&catalog, locale(root), code, fallback)
+    })
+}
