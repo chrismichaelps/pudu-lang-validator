@@ -4,6 +4,7 @@ module PuduLangValidator.Rule
 import Std.Json as Json
 import Std.List as List
 import PuduLangValidator.Result as Validation
+import PuduLangValidator.Selection as Selection
 
 /** @Validation.Rule.ContextData — shares immutable application data */
 export type ContextData = Map[Str, Json.Json]
@@ -168,8 +169,7 @@ export fn build[T, V](builder: RuleBuilder[T, V]) -> Rule[T] {
   let displayName = builder.displayName
   let sets = builder.ruleSets
   Rule{name: name, ruleSets: sets, run: fn(root: T, _sets: Array[Str], _defaults: Bool, properties: Array[Str], data: ContextData) -> Array[Validation.Failure] {
-      if !properties.isEmpty() && !List.any(&properties, |wanted: Str|
-        wanted == name || name.startsWith(wanted + ".") || name.startsWith(wanted + "[")) { return [] }
+      if !properties.isEmpty() && !List.any(&properties, |wanted: Str| Selection.covers(wanted, name)) { return [] }
       let value = builder.select(root)
       var failures: Array[Validation.Failure] = []
       for check in builder.checks {

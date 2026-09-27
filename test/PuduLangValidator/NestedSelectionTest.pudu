@@ -45,13 +45,17 @@ fn main() -> Int {
     Validator.includeProperties(Validator.allRuleSets(), ["address.zip"]))
   let oneSku = Validator.validateWith(&validator, customer,
     Validator.includeProperties(Validator.defaults(), ["orders[1].sku"]))
+  let allSku = Validator.validateWith(&validator, customer,
+    Validator.includeProperties(Validator.defaults(), ["orders[].sku"]))
   let checks = Test.suite("NestedSelection", &[
       Test.equals("child rule set reaches named child", &shipping.errors.map(|failure: Validation.Failure| failure.propertyName),
           &["address.zip"]),
       Test.equals("nested property selection reaches one child field", &addressOnly.errors.map(|failure: Validation.Failure| failure.propertyName),
           &["address.zip"]),
       Test.equals("indexed property selection reaches one item and field", &oneSku.errors.map(|failure: Validation.Failure| failure.propertyName),
-          &["orders[1].sku"])
+          &["orders[1].sku"]),
+      Test.equals("empty index selects the field on every item", &allSku.errors.map(|failure: Validation.Failure| failure.propertyName),
+          &["orders[0].sku", "orders[1].sku"])
     ])
   Test.report(&Test.run(&checks))
 }

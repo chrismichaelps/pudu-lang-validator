@@ -1,0 +1,71 @@
+/** @Validation.Selection.Paths — relates requested and concrete property paths */
+module PuduLangValidator.Selection
+
+import Std.Text as Text
+
+/// Whether a request selects this concrete property or one of its descendants.
+export fn covers(requested: Str, path: Str) -> Bool {
+  match scan(requested, path) {
+    case Some((requestEnd, pathEnd)) => {
+      let chars = path.chars()
+      requestEnd == requested.length() && boundary(&chars, pathEnd)
+    }
+    case None => false
+  }
+}
+
+/// Whether a concrete rule and a request meet at a path boundary.
+export fn overlaps(requested: Str, path: Str) -> Bool {
+  match scan(requested, path) {
+    case Some((requestEnd, pathEnd)) => {
+      let requestedChars = requested.chars()
+      let pathChars = path.chars()
+      (requestEnd == requestedChars.length() && boundary(&pathChars, pathEnd)) ||
+      (pathEnd == pathChars.length() && boundary(&requestedChars, requestEnd))
+    }
+    case None => false
+  }
+}
+
+/// Return a requested path relative to a concrete child prefix.
+export fn relative(requested: Str, prefix: Str) -> Option[Str] {
+  let positions = scan(requested, prefix) ?
+  let requestEnd = positions[0]
+  let prefixEnd = positions[1]
+  if prefixEnd != prefix.length() { return None }
+  let chars = requested.chars()
+  if requestEnd == chars.length() { return Some("") }
+  if chars[requestEnd] == '.' { Some(Text.drop(requested, requestEnd + 1)) } else { None }
+}
+
+/// Whether the next unmatched character starts a child segment.
+fn boundary(chars: &Array[Char], index: Int) -> Bool {
+  index == chars.length() || chars[index] == '.' || chars[index] == '['
+}
+
+/// Consume matching characters and one bracket value per empty index.
+fn scan(requested: Str, path: Str) -> Option[(Int, Int)] {
+  let requestChars = requested.chars()
+  let pathChars = path.chars()
+  var requestAt = 0
+  var pathAt = 0
+  while requestAt < requestChars.length() && pathAt < pathChars.length() {
+    if requestChars[requestAt] == '[' && requestAt + 1 < requestChars.length() && requestChars[requestAt + 1] == ']' {
+      if pathChars[pathAt] != '[' { return None }
+      pathAt = pathAt + 1
+      let first = pathAt
+      while pathAt < pathChars.length() && pathChars[pathAt] != ']' {
+        if pathChars[pathAt] == '[' { return None }
+        pathAt = pathAt + 1
+      }
+      if pathAt == first || pathAt == pathChars.length() { return None }
+      requestAt = requestAt + 2
+      pathAt = pathAt + 1
+    } else {
+      if requestChars[requestAt] != pathChars[pathAt] { return None }
+      requestAt = requestAt + 1
+      pathAt = pathAt + 1
+    }
+  }
+  Some((requestAt, pathAt))
+}

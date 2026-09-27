@@ -8,6 +8,7 @@ type: moc
 - [[Result]] — failures and result presentation.
 - [[Rule]] — typed property rules and builders.
 - [[Validator]] — rule composition and execution.
+- [[Selection]] — segment-aware property path selection.
 - [[Advanced]] — custom and dependent rules.
 - [[Async]] — explicit asynchronous checks.
 - [[Localization]] — application-owned message catalogs.

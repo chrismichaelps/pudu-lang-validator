@@ -11,6 +11,8 @@ Adds `notEmpty`, `empty`, and `countBetween` checks for `Array[V]`. `forEach` bu
 
 ## Algorithm and edge cases
 
+Element selection uses [[src/PuduLangValidator/Selection]] to match explicit and empty bracket indices at path boundaries.
+
 Count bounds are rendered into failure messages when a check fails.
 
 Each element is visited in ascending index order. Filtering preserves original indices. A simple element predicate yields one failure; an element builder may yield several in check order, unless stopped after the first failure. Selected indexed paths skip other elements. The element message may use `{CollectionIndex}` and `{PropertyPath}`. A custom indexer supplies the bracket content, while `{CollectionIndex}` stays the numeric source position. An empty array produces no element failures.

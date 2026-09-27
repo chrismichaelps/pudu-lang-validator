@@ -1,0 +1,44 @@
+/** @Test.Validation.WildcardNested.Suite — checks multi-level collection selection */
+module PuduLangValidator.WildcardNestedTest
+
+import Std.Test as Test
+import PuduLangValidator.Result as Validation
+import PuduLangValidator.Rule as Rule
+import PuduLangValidator.Rules.Child as Child
+import PuduLangValidator.Rules.Text as Text
+import PuduLangValidator.Validator as Validator
+
+type Item = { code: Str, note: Str }
+type Group = { items: Array[Item] }
+type Root = { groups: Array[Group] }
+
+fn itemRules() -> Validator.Validator[Item] {
+  let code = Rule.build(Text.notEmpty(Rule.ruleFor("code", |item: Item| item.code)))
+  let note = Rule.build(Text.notEmpty(Rule.ruleFor("note", |item: Item| item.note)))
+  Validator.add(Validator.add(Validator.create(), code), note)
+}
+
+fn groupRules() -> Validator.Validator[Group] {
+  Validator.add(Validator.create(), Child.forEachValidator("items", |group: Group| group.items, itemRules()))
+}
+
+fn rootRules() -> Validator.Validator[Root] {
+  Validator.add(Validator.create(), Child.forEachValidator("groups", |root: Root| root.groups, groupRules()))
+}
+
+fn main() -> Int {
+  let validator = rootRules()
+  let item = Item{code: "", note: ""}
+  let root = Root{groups: [Group{items: [item, item]}, Group{items: [item]}]}
+  let selected = Validator.validateWith(&validator, root,
+    Validator.includeProperties(Validator.defaults(), ["groups[].items[].code"]))
+  let exact = Validator.validateWith(&validator, root,
+    Validator.includeProperties(Validator.defaults(), ["groups[0].items[1].code"]))
+  let checks = Test.suite("WildcardNested", &[
+      Test.equals("nested wildcards select each code", &selected.errors.map(|failure: Validation.Failure| failure.propertyName),
+          &["groups[0].items[0].code", "groups[0].items[1].code", "groups[1].items[0].code"]),
+      Test.equals("explicit nested indices select one code", &exact.errors.map(|failure: Validation.Failure| failure.propertyName),
+          &["groups[0].items[1].code"])
+    ])
+  Test.report(&Test.run(&checks))
+}

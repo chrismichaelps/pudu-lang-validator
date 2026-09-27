@@ -4,6 +4,7 @@ module PuduLangValidator.Rules.Collection
 import Std.List as List
 import PuduLangValidator.Result as Validation
 import PuduLangValidator.Rule as Rule
+import PuduLangValidator.Selection as Selection
 
 /// Require an array to contain an element.
 export fn notEmpty[T, V](builder: Rule.RuleBuilder[T, Array[V]]) -> Rule.RuleBuilder[T, Array[V]] {
@@ -48,7 +49,7 @@ export fn forEachWhereIndexed[T, V](
       var index = 0
       for item in items {
         let path = name + "[" + indexer(index, item) + "]"
-        if pathSelected(name, path, &properties) && keep(item) && !test(item) {
+        if pathSelected(path, &properties) && keep(item) && !test(item) {
           let rendered = message.replace("\{CollectionIndex\}", show(index))
             .replace("\{PropertyPath\}", path)
             .replace("\{PropertyName\}", name)
@@ -127,7 +128,7 @@ export fn buildEach[T, V](builder: ElementBuilder[T, V]) -> Rule.Rule[T] {
       var index = 0
       for item in builder.select(root) {
         let path = name + "[" + builder.indexer(index, item) + "]"
-        if pathSelected(name, path, &properties) && builder.keep(item) {
+        if pathSelected(path, &properties) && builder.keep(item) {
           let itemRule = Rule.build(Rule.overridePropertyName(builder.checks, path))
           for failure in itemRule.run((root, item), selected, includeDefault, properties, data) {
             failures = failures.push(Validation.Failure {
@@ -142,7 +143,6 @@ export fn buildEach[T, V](builder: ElementBuilder[T, V]) -> Rule.Rule[T] {
 }
 
 /// Whether a selected property reaches this source element.
-fn pathSelected(name: Str, path: Str, properties: &Array[Str]) -> Bool {
-  properties.isEmpty() || List.any(properties, |wanted: Str|
-    wanted == name || wanted == path || wanted.startsWith(path + "."))
+fn pathSelected(path: Str, properties: &Array[Str]) -> Bool {
+  properties.isEmpty() || List.any(properties, |wanted: Str| Selection.covers(wanted, path))
 }

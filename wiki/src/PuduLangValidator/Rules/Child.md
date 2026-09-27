@@ -11,6 +11,8 @@ path: src/PuduLangValidator/Rules/Child.pudu
 
 ## Algorithm and edge cases
 
+Child path translation uses [[src/PuduLangValidator/Selection]] to preserve wildcard indices across nested arrays.
+
 Failures from children are copied in child order with a prefix: `address.postcode` or `orders[2].total`. Empty child property names resolve to the prefix itself. Collection indices are original indices. Child validators inherit selected rule sets, default-rule inclusion, and the property selection with their own prefix removed. Collection children at unselected indices are skipped.
 
 ## Negative logic

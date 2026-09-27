@@ -1,9 +1,9 @@
 /** @Validation.Rules.Child.Module — composes nested validator failures */
 module PuduLangValidator.Rules.Child
 
-import Std.Text as Text
 import PuduLangValidator.Result as Validation
 import PuduLangValidator.Rule as Rule
+import PuduLangValidator.Selection as Selection
 import PuduLangValidator.Validator as Validator
 
 /// Run a child validator and prefix its failure paths.
@@ -70,8 +70,8 @@ fn requested(name: Str, properties: &Array[Str]) -> Array[Str] {
   if name.isEmpty() { return *properties }
   var selected: Array[Str] = []
   for wanted in *properties {
-    if wanted == name || name.startsWith(wanted + ".") || name.startsWith(wanted + "[") { return [] }
-    if wanted.startsWith(name + ".") { selected = selected.push(Text.drop(wanted, name.length() + 1)) }
+    if Selection.covers(wanted, name) { return [] }
+    if let Some(relative) = Selection.relative(wanted, name) { selected = selected.push(relative) }
   }
   selected
 }
@@ -80,7 +80,7 @@ fn requested(name: Str, properties: &Array[Str]) -> Array[Str] {
 fn reaches(name: Str, path: Str, properties: &Array[Str]) -> Bool {
   if properties.isEmpty() { return true }
   for wanted in *properties {
-    if wanted == name || wanted == path || wanted.startsWith(path + ".") { return true }
+    if Selection.overlaps(wanted, path) { return true }
   }
   false
 }
