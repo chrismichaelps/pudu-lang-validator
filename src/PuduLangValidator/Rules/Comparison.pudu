@@ -16,6 +16,32 @@ export fn notEqual[T, V: Eq](builder: Rule.RuleBuilder[T, V], excluded: V) -> Ru
         "Value must differ from \{ComparisonValue\}."), "NotEqual"), "ComparisonValue", excluded.toText())
 }
 
+/// Require equality with another selected property on the source.
+export fn equalToProperty[T, V: Eq](
+  builder: Rule.RuleBuilder[T, V], path: Str, select: fn(T) -> V
+) -> Rule.RuleBuilder[T, V] {
+  let checked = Rule.withCode(Rule.withMessage(Rule.mustWithArguments(builder,
+        fn(root: T, value: V) -> Option[Array[(Str, Str)]] {
+          let other = select(root)
+          if value == other { None } else { Some([("ComparisonValue", other.toText())]) }
+        }),
+      "Value must equal \{ComparisonValue\} from \{ComparisonProperty\}."), "Equal")
+  Rule.withArgument(checked, "ComparisonProperty", path)
+}
+
+/// Require inequality with another selected property on the source.
+export fn notEqualToProperty[T, V: Eq](
+  builder: Rule.RuleBuilder[T, V], path: Str, select: fn(T) -> V
+) -> Rule.RuleBuilder[T, V] {
+  let checked = Rule.withCode(Rule.withMessage(Rule.mustWithArguments(builder,
+        fn(root: T, value: V) -> Option[Array[(Str, Str)]] {
+          let other = select(root)
+          if value != other { None } else { Some([("ComparisonValue", other.toText())]) }
+        }),
+      "Value must differ from \{ComparisonValue\} at \{ComparisonProperty\}."), "NotEqual")
+  Rule.withArgument(checked, "ComparisonProperty", path)
+}
+
 /// Require membership in an explicitly supplied set of values.
 export fn oneOf[T, V: Eq](builder: Rule.RuleBuilder[T, V], allowed: Array[V]) -> Rule.RuleBuilder[T, V] {
   Rule.withCode(Rule.withMessage(Rule.must(builder, |value: V| allowed.contains(value)),

@@ -12,7 +12,7 @@ export type ContextData = Map[Str, Json.Json]
 
 /** @Validation.Rule.Check — binds predicate and failure metadata */
 export type Check[T, V] = {
-  test: fn(T, V, ContextData) -> Bool,
+  test: fn(T, V, ContextData) -> Option[Array[(Str, Str)]],
   condition: fn(T) -> Bool,
   message: Str,
   messageFactory: Option[fn(T, V) -> Str],
@@ -55,6 +55,23 @@ export fn mustWith[T, V](builder: RuleBuilder[T, V], test: fn(T, V) -> Bool) -> 
 /// Require a predicate that may read immutable root context data.
 export fn mustWithContext[T, V](
   builder: RuleBuilder[T, V], test: fn(T, V, ContextData) -> Bool
+) -> RuleBuilder[T, V] {
+  addCheck(builder, fn(root: T, value: V, data: ContextData) -> Option[Array[(Str, Str)]] {
+      if test(root, value, data) { None } else { Some([]) }
+    })
+}
+
+/// Capture message arguments while deciding whether a check fails.
+export fn mustWithArguments[T, V](
+  builder: RuleBuilder[T, V], test: fn(T, V) -> Option[Array[(Str, Str)]]
+) -> RuleBuilder[T, V] {
+  addCheck(builder, fn(root: T, value: V, _data: ContextData) -> Option[Array[(Str, Str)]] {
+      test(root, value)
+    })
+}
+
+fn addCheck[T, V](
+  builder: RuleBuilder[T, V], test: fn(T, V, ContextData) -> Option[Array[(Str, Str)]]
 ) -> RuleBuilder[T, V] {
   let check = Check {
     test: test,
@@ -220,12 +237,13 @@ export fn build[T, V](builder: RuleBuilder[T, V]) -> Rule[T] {
       let value = builder.select(root)
       var failures: Array[Validation.Failure] = []
       for check in builder.checks {
-        if check.condition(root) && !check.test(root, value, data) {
+        let outcome = if check.condition(root) { check.test(root, value, data) } else { None }
+        if let Some(captured) = outcome {
           let template = match check.messageFactory {
             case Some(factory) => factory(root, value)
             case None => check.message
           }
-          let message = render(template, displayName, name, root, value, &check.arguments)
+          let message = render(template, displayName, name, root, value, &check.arguments, &captured)
           let severity = match check.severityFactory {
             case Some(factory) => factory(root, value)
             case None => check.severity
@@ -248,7 +266,7 @@ export fn build[T, V](builder: RuleBuilder[T, V]) -> Rule[T] {
 /// Render only placeholders present in the chosen template.
 fn render[T, V](
   template: Str, displayName: Str, path: Str, root: T, value: V,
-  arguments: &Array[(Str, fn(T, V) -> Str)]
+  arguments: &Array[(Str, fn(T, V) -> Str)], captured: &Array[(Str, Str)]
 ) -> Str {
   let chars = template.chars()
   var pieces: Array[Str] = []
@@ -263,7 +281,7 @@ fn render[T, V](
     while close < chars.length() && chars[close] != '}' { close = close + 1 }
     if close == chars.length() { break }
     let key = Text.take(Text.drop(template, index + 1), close - index - 1)
-    match argument(key, displayName, path, root, value, arguments) {
+    match argument(key, displayName, path, root, value, arguments, captured) {
       case Some(replacement) => {
         pieces = pieces.push(Text.take(Text.drop(template, literalStart), index - literalStart))
         pieces = pieces.push(replacement)
@@ -280,13 +298,16 @@ fn render[T, V](
 /// Resolve one placeholder without inspecting replacement text.
 fn argument[T, V](
   name: Str, displayName: Str, path: Str, root: T, value: V,
-  arguments: &Array[(Str, fn(T, V) -> Str)]
+  arguments: &Array[(Str, fn(T, V) -> Str)], captured: &Array[(Str, Str)]
 ) -> Option[Str] {
   if name == "PropertyName" { return Some(displayName) }
   if name == "PropertyPath" { return Some(path) }
   if name == "PropertyValue" { return Some(value.toText()) }
   for entry in *arguments {
     if entry[0] == name { return Some(entry[1](root, value)) }
+  }
+  for entry in *captured {
+    if entry[0] == name { return Some(entry[1]) }
   }
   None
 }
