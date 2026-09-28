@@ -73,6 +73,8 @@ Messages support `{PropertyName}`, `{PropertyPath}`, and `{PropertyValue}`. Buil
 
 `Rule.withSeverityFrom` and `Rule.withStateFrom` derive failure metadata from the source and selected value. Async rules offer root-based variants with the same names.
 
+`Testing.testValidate` and `Testing.testValidateAsync` run real validators for tests. Start a result query with `Testing.forProperty(&result, "name")`, narrow it with `Testing.withCode` or other metadata filters, then use `Testing.hasAny`, `Testing.hasNone`, or `Testing.only` with `Std.Test.that`.
+
 ## Developing
 
 ```sh
