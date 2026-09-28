@@ -14,3 +14,4 @@
 - 2026-09-27 — Reserve the decimal integer digit budget independently of observed fractional scale.
 - 2026-09-28 — Expose the configured regex pattern to failure messages.
 - 2026-09-28 — Add early synchronous and awaited prevalidation to async validators.
+- 2026-09-28 — Rewrite the package README around a checked example and stable API areas.
