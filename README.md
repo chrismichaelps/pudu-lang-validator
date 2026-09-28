@@ -6,6 +6,7 @@
   <a href="https://www.pudu-lang.org/">Pudu</a> |
   <a href="https://www.pudu-lang.org/docs">Documentation</a> |
   <a href="wiki/00-INDEX.md">Design vault</a> |
+  <a href="https://github.com/chrismichaelps/pudu-lang-validator/wiki">API docs</a> |
   <a href="CONTRIBUTING.md">Contributing</a>
 </p>
 
@@ -59,7 +60,7 @@ Cross-property checks such as `Comparison.equalToProperty` and `Ordering.greater
 
 `Async` runs awaited checks alongside rules lifted from `Rule`. Call `Async.validateAsync` at that boundary. Both validator types support a prevalidation decision before ordinary rules run. The `Testing` module offers result queries for paths, messages, codes, severity, and state.
 
-The [source mirrors](wiki/src/_MOC.md) record each module's behavior and design decisions. The [API documentation wiki](https://github.com/chrismichaelps/pudu-lang-validator/wiki) walks through every area with complete programs checked against the release.
+The [source mirrors](wiki/src/_MOC.md) record each module's behavior and design decisions.
 
 ## Installing
 
