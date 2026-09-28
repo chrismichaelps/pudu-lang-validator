@@ -53,10 +53,10 @@ export fn emailAddress[T](builder: Rule.RuleBuilder[T, Str]) -> Rule.RuleBuilder
 /// Compile a pattern once and attach it, or return the pattern error.
 export fn matches[T](builder: Rule.RuleBuilder[T, Str], pattern: Str) -> Result[Rule.RuleBuilder[T, Str], Regex.RegexError] {
   let compiled = Regex.compile(pattern) ?
-  Ok(Rule.withCode(Rule.withMessage(
-        Rule.must(builder, |value: Str| Regex.isMatch(&compiled, value)),
-        "Text does not match the required pattern."
-      ), "Matches"))
+  Ok(Rule.withArgument(Rule.withCode(Rule.withMessage(
+          Rule.must(builder, |value: Str| Regex.isMatch(&compiled, value)),
+          "Text does not match the required pattern."
+        ), "Matches"), "RegularExpression", pattern))
 }
 
 /// Require a plausible card number with a valid Luhn checksum.
