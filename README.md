@@ -6,6 +6,7 @@
   <a href="https://www.pudu-lang.org/">Pudu</a> |
   <a href="https://www.pudu-lang.org/docs">Documentation</a> |
   <a href="wiki/00-INDEX.md">Design vault</a> |
+  <a href="https://github.com/chrismichaelps/pudu-lang-validator/wiki">API docs</a> |
   <a href="CONTRIBUTING.md">Contributing</a>
 </p>
 
