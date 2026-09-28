@@ -20,6 +20,7 @@ fn validator(pattern: Str) -> Validator.Validator[Model] {
 fn main() -> Int {
   let substring = validator("ab")
   let anchored = validator("^ab$")
+  let quantified = validator("^[A-Z]\{2\}-[0-9]\{4\}$")
   let failed = Validator.validate(&substring, Model{text: "zz"})
   let anchoredFailed = Validator.validate(&anchored, Model{text: "zab"})
   let invalid = TextRule.matches(Rule.ruleFor("text", |model: Model| model.text), "[")
@@ -37,6 +38,8 @@ fn main() -> Int {
       Test.that("anchored rule rejects surrounding text", !anchoredFailed.isValid),
       Test.equals("anchored pattern remains literal in message", &anchoredFailed.errors[0].errorMessage,
           &"Pattern ^ab$ rejected text."),
+      Test.that("escaped braces match a quantifier", Validator.validate(&quantified, Model{text: "AB-1234"}).isValid),
+      Test.that("escaped braces reject a short code", !Validator.validate(&quantified, Model{text: "A-123"}).isValid),
       Test.that("invalid pattern fails rule construction", invalidPattern)
     ])
   Test.report(&Test.run(&checks))

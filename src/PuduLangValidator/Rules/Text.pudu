@@ -50,7 +50,8 @@ export fn emailAddress[T](builder: Rule.RuleBuilder[T, Str]) -> Rule.RuleBuilder
       ), "Text must have an internal @ sign."), "EmailAddress")
 }
 
-/// Compile a pattern once and attach it, or return the pattern error.
+/// Compile a pattern once and attach it, or return the pattern error. Braces interpolate in
+/// string literals, so a quantifier is written with escaped braces (`\{2\}`).
 export fn matches[T](builder: Rule.RuleBuilder[T, Str], pattern: Str) -> Result[Rule.RuleBuilder[T, Str], Regex.RegexError] {
   let compiled = Regex.compile(pattern) ?
   Ok(Rule.withArgument(Rule.withCode(Rule.withMessage(
@@ -91,7 +92,7 @@ fn isCardNumber(value: Str) -> Bool {
   var index = 0
   for digit in digits.reverse() {
     let doubled = if index % 2 == 1 { digit * 2 } else { digit }
-    sum = sum + if doubled > 9 { doubled - 9 } else { doubled }
+    sum = sum + if doubled >= 10 { doubled - 9 } else { doubled }
     index = index + 1
   }
   sum % 10 == 0

@@ -1,6 +1,7 @@
 /** @Validation.Rules.Child.Module — composes nested validator failures */
 module PuduLangValidator.Rules.Child
 
+import Std.List as List
 import PuduLangValidator.Result as Validation
 import PuduLangValidator.Rule as Rule
 import PuduLangValidator.Selection as Selection
@@ -57,11 +58,11 @@ export fn forEachValidator[T, V](
 fn childGroups[V](child: &Validator.Validator[V]) -> Array[Str] {
   var groups: Array[Str] = []
   for rule in child.rules {
-    if rule.ruleSets.isEmpty() && !groups.contains("default") { groups = groups.push("default") }
     for name in rule.ruleSets {
       if !groups.contains(name) { groups = groups.push(name) }
     }
   }
+  if List.any(&child.rules, |rule: Rule.Rule[V]| rule.ruleSets.isEmpty()) { groups = groups.push("default") }
   groups
 }
 

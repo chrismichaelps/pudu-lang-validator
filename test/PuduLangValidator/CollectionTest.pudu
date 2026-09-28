@@ -27,11 +27,19 @@ fn filteredValidator() -> Validator.Validator[Basket] {
   Validator.add(Validator.create(), Collection.buildEach(checked))
 }
 
+fn silentValidator() -> Validator.Validator[Basket] {
+  let base = Collection.ruleForEach("lines", |basket: Basket| basket.lines)
+  let none = Collection.whereItems(base, |_line: Str| false)
+  let checked = Collection.withMessage(Collection.must(none, |_line: Str| false), "Never.")
+  Validator.add(Validator.create(), Collection.buildEach(checked))
+}
+
 fn main() -> Int {
   let elements = elementValidator()
   let filtered = filteredValidator()
   let failures = Validator.validate(&elements, Basket{lines: ["", "ok", "long"]})
   let filteredFailures = Validator.validate(&filtered, Basket{lines: ["skip", "bad", "skip", "x"]})
+  let silent = Validator.validate(&silentValidator(), Basket{lines: ["a", "b"]})
   let checks = Test.suite("Collection", &[
       Test.equals("one failure per stopped element", &failures.errors.length(), &2),
       Test.equals("chain paths use source indices", &failures.errors.map(|error: Validation.Failure| error.propertyName),
@@ -41,7 +49,8 @@ fn main() -> Int {
       Test.equals("filter retains original indices", &filteredFailures.errors.map(|error: Validation.Failure| error.propertyName),
           &["lines[at-1]", "lines[at-3]"]),
       Test.equals("custom index and numeric placeholder differ", &filteredFailures.errors[0].errorMessage,
-          &"Bad line at 1: lines[at-1].")
+          &"Bad line at 1: lines[at-1]."),
+      Test.equals("filtered-out chain elements stay silent", &silent.errors.length(), &0)
     ])
   Test.report(&Test.run(&checks))
 }

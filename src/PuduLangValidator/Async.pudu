@@ -292,11 +292,11 @@ fn selectedScalarElement(path: Str, properties: &Array[Str]) -> Bool {
 fn childSets[V](child: &AsyncValidator[V]) -> Array[Str] {
   var sets: Array[Str] = []
   for rule in child.rules {
-    if rule.ruleSets.isEmpty() && !sets.contains("default") { sets = sets.push("default") }
     for name in rule.ruleSets {
       if !sets.contains(name) { sets = sets.push(name) }
     }
   }
+  if List.any(&child.rules, |rule: AsyncRule[V]| rule.ruleSets.isEmpty()) { sets = sets.push("default") }
   sets
 }
 

@@ -27,6 +27,7 @@ MEDIUM — preserves nested failure locations across typed validator boundaries.
 
 - **Q:** Validate absent optional child? **A:** Skip it. **Rationale:** absence is governed by an explicit presence rule. **Rejected:** fabricating child errors.
 - **Q:** Should a child keep its original failure path? **A:** Prefix it. **Rationale:** callers need a location in the root model. **Rejected:** losing context.
+- **Q:** How is the default set advertised for nested children? **A:** Collect named sets first, then append `default` once when any rule is unnamed. **Rationale:** the advertisement is order-free and each guard is observable. **Rejected:** a per-rule guard whose named-rule arm no nested run can observe.
 
 ## Referenced by
 

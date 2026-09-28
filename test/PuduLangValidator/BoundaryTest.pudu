@@ -1,0 +1,70 @@
+/** @Test.Validation.Boundary.Suite — pins inclusive bounds and boundary verdicts */
+module PuduLangValidator.BoundaryTest
+
+import Std.Test as Test
+import PuduLangValidator.Result as Validation
+import PuduLangValidator.Rule as Rule
+import PuduLangValidator.Rules.Child as ChildRule
+import PuduLangValidator.Rules.Collection as CollectionRule
+import PuduLangValidator.Rules.Comparison as ComparisonRule
+import PuduLangValidator.Rules.Decimal as DecimalRule
+import PuduLangValidator.Rules.Number as NumberRule
+import PuduLangValidator.Rules.Ordering as OrderingRule
+import PuduLangValidator.Rules.Presence as PresenceRule
+import PuduLangValidator.Validator as Validator
+
+type Child = { code: Str }
+
+type Sample = {
+  score: Int, nickname: Option[Str], tags: Array[Str], amount: Decimal,
+  level: Int, other: Int, child: Child, items: Array[Child]
+}
+
+fn numberRule(check: fn(Rule.RuleBuilder[Sample, Int]) -> Rule.RuleBuilder[Sample, Int]) -> Validator.Validator[Sample] {
+  Validator.add(Validator.create(), Rule.build(check(Rule.ruleFor("score", |sample: Sample| sample.score))))
+}
+
+fn main() -> Int {
+  let sample = Sample{score: 5, nickname: Some("Ada"), tags: ["a", "b"], amount: 5d,
+    level: 5, other: 6, child: Child{code: "ok"}, items: [Child{code: "ok"}, Child{code: ""}] }
+  let below = Sample{..sample, score: 4, level: 4, other: 4, tags: [], nickname: None, amount: 5d}
+  let above = Sample{..sample, score: 6, level: 6, other: 6}
+  let codeRule = Rule.build(Rule.must(Rule.ruleFor("code", |child: Child| child.code),
+      |code: Str| !code.isEmpty()))
+  let childValidator = Validator.add(Validator.create(), codeRule)
+  let checks = Test.suite("Boundary", &[
+      Test.that("greaterThan rejects the bound", !Validator.validate(&numberRule(|base: Rule.RuleBuilder[Sample, Int]| NumberRule.greaterThan(base, 5)), sample).isValid),
+      Test.that("greaterThanOrEqualTo accepts the bound", Validator.validate(&numberRule(|base: Rule.RuleBuilder[Sample, Int]| NumberRule.greaterThanOrEqualTo(base, 5)), sample).isValid),
+      Test.that("lessThan rejects the bound", !Validator.validate(&numberRule(|base: Rule.RuleBuilder[Sample, Int]| NumberRule.lessThan(base, 5)), sample).isValid),
+      Test.that("lessThanOrEqualTo accepts the bound", Validator.validate(&numberRule(|base: Rule.RuleBuilder[Sample, Int]| NumberRule.lessThanOrEqualTo(base, 5)), sample).isValid),
+      Test.that("inclusiveBetween accepts the low bound", Validator.validate(&numberRule(|base: Rule.RuleBuilder[Sample, Int]| NumberRule.inclusiveBetween(base, 5, 6)), sample).isValid),
+      Test.that("inclusiveBetween accepts the high bound", Validator.validate(&numberRule(|base: Rule.RuleBuilder[Sample, Int]| NumberRule.inclusiveBetween(base, 5, 6)), above).isValid),
+      Test.that("exclusiveBetween rejects the low bound", !Validator.validate(&numberRule(|base: Rule.RuleBuilder[Sample, Int]| NumberRule.exclusiveBetween(base, 5, 6)), sample).isValid),
+      Test.that("exclusiveBetween rejects below the bounds", !Validator.validate(&numberRule(|base: Rule.RuleBuilder[Sample, Int]| NumberRule.exclusiveBetween(base, 5, 6)), below).isValid),
+      Test.that("exclusiveBetween rejects the high bound", !Validator.validate(&numberRule(|base: Rule.RuleBuilder[Sample, Int]| NumberRule.exclusiveBetween(base, 5, 6)), above).isValid),
+      Test.that("equal accepts the expected value", Validator.validate(&numberRule(|base: Rule.RuleBuilder[Sample, Int]| NumberRule.equal(base, 5)), sample).isValid),
+      Test.that("notEqual rejects the excluded value", !Validator.validate(&numberRule(|base: Rule.RuleBuilder[Sample, Int]| NumberRule.notEqual(base, 5)), sample).isValid),
+      Test.that("integer notEmpty accepts nonzero", Validator.validate(&numberRule(|base: Rule.RuleBuilder[Sample, Int]| NumberRule.notEmpty(base)), sample).isValid),
+      Test.that("integer empty accepts zero", Validator.validate(&numberRule(|base: Rule.RuleBuilder[Sample, Int]| NumberRule.empty(base)), Sample{..sample, score: 0}).isValid),
+      Test.that("notNull accepts a value", Validator.validate(&Validator.add(Validator.create(), Rule.build(PresenceRule.notNull(Rule.ruleFor("nickname", |sample: Sample| sample.nickname)))), sample).isValid),
+      Test.that("notNull rejects absence", !Validator.validate(&Validator.add(Validator.create(), Rule.build(PresenceRule.notNull(Rule.ruleFor("nickname", |sample: Sample| sample.nickname)))), below).isValid),
+      Test.that("isNull rejects a value", !Validator.validate(&Validator.add(Validator.create(), Rule.build(PresenceRule.isNull(Rule.ruleFor("nickname", |sample: Sample| sample.nickname)))), sample).isValid),
+      Test.that("isNull accepts absence", Validator.validate(&Validator.add(Validator.create(), Rule.build(PresenceRule.isNull(Rule.ruleFor("nickname", |sample: Sample| sample.nickname)))), below).isValid),
+      Test.that("collection notEmpty accepts items", Validator.validate(&Validator.add(Validator.create(), Rule.build(CollectionRule.notEmpty(Rule.ruleFor("tags", |sample: Sample| sample.tags)))), sample).isValid),
+      Test.that("collection notEmpty rejects emptiness", !Validator.validate(&Validator.add(Validator.create(), Rule.build(CollectionRule.notEmpty(Rule.ruleFor("tags", |sample: Sample| sample.tags)))), below).isValid),
+      Test.that("countBetween accepts the low bound", Validator.validate(&Validator.add(Validator.create(), Rule.build(CollectionRule.countBetween(Rule.ruleFor("tags", |sample: Sample| sample.tags), 2, 3))), sample).isValid),
+      Test.that("countBetween accepts the high bound", Validator.validate(&Validator.add(Validator.create(), Rule.build(CollectionRule.countBetween(Rule.ruleFor("tags", |sample: Sample| sample.tags), 1, 2))), sample).isValid),
+      Test.that("countBetween rejects below the low bound", !Validator.validate(&Validator.add(Validator.create(), Rule.build(CollectionRule.countBetween(Rule.ruleFor("tags", |sample: Sample| sample.tags), 3, 4))), sample).isValid),
+      Test.that("filtered elements stay silent", Validator.validate(&Validator.add(Validator.create(), CollectionRule.forEachWhere("tags", |sample: Sample| sample.tags, |_tag: Str| false, |_tag: Str| false, "Never.")), sample).isValid),
+      Test.that("decimal precision one accepts a digit", Validator.validate(&Validator.add(Validator.create(), Rule.build(DecimalRule.precisionScale(Rule.ruleFor("amount", |sample: Sample| sample.amount), 1, 0, false))), sample).isValid),
+      Test.that("ordered greaterThanOrEqualTo accepts the bound", Validator.validate(&Validator.add(Validator.create(), Rule.build(OrderingRule.greaterThanOrEqualTo(Rule.ruleFor("level", |sample: Sample| sample.level), 5))), sample).isValid),
+      Test.that("ordered lessThanOrEqualTo accepts the bound", Validator.validate(&Validator.add(Validator.create(), Rule.build(OrderingRule.lessThanOrEqualTo(Rule.ruleFor("level", |sample: Sample| sample.level), 5))), sample).isValid),
+      Test.that("ordered inclusiveBetween accepts the low bound", Validator.validate(&Validator.add(Validator.create(), Rule.build(OrderingRule.inclusiveBetween(Rule.ruleFor("level", |sample: Sample| sample.level), 5, 6))), sample).isValid),
+      Test.that("ordered inclusiveBetween accepts the high bound", Validator.validate(&Validator.add(Validator.create(), Rule.build(OrderingRule.inclusiveBetween(Rule.ruleFor("level", |sample: Sample| sample.level), 5, 6))), above).isValid),
+      Test.that("ordered inclusiveBetween rejects outside", !Validator.validate(&Validator.add(Validator.create(), Rule.build(OrderingRule.inclusiveBetween(Rule.ruleFor("level", |sample: Sample| sample.level), 5, 6))), below).isValid),
+      Test.that("typed notEqual accepts a different value", Validator.validate(&Validator.add(Validator.create(), Rule.build(ComparisonRule.notEqual(Rule.ruleFor("level", |sample: Sample| sample.level), 4))), sample).isValid),
+      Test.that("typed notEqual rejects the excluded value", !Validator.validate(&Validator.add(Validator.create(), Rule.build(ComparisonRule.notEqual(Rule.ruleFor("level", |sample: Sample| sample.level), 5))), sample).isValid),
+      Test.equals("default selection reaches failing elements", &Validator.validate(&Validator.add(Validator.create(), ChildRule.forEachValidator("items", |sample: Sample| sample.items, childValidator)), sample).errors.map(|failure: Validation.Failure| failure.propertyName), &["items[1].code"])
+    ])
+  Test.report(&Test.run(&checks))
+}
