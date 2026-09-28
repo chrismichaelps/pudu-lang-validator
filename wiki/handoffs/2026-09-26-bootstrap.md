@@ -15,7 +15,7 @@ The bootstrap owns `src/PuduLangValidator/**`, `src/Main.pudu`, their mirrors, p
 
 ## Exact next action
 
-Audit remaining validation context and child-selection behavior, then open a focused issue before editing its source mirror.
+Confirm issue #26 restores a passing GitHub Actions check, then prepare release 0.1.0 from updated `dev`.
 
 ## Referenced by
 

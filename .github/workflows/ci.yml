@@ -41,4 +41,5 @@ jobs:
       - name: Build CLI
         run: pudu build src/Main.pudu -o "$RUNNER_TEMP/pudu-lang-validator"
       - name: Smoke CLI
-        run: "$RUNNER_TEMP/pudu-lang-validator" --version
+        run: |
+          "$RUNNER_TEMP/pudu-lang-validator" --version

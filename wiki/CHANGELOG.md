@@ -15,3 +15,4 @@
 - 2026-09-28 — Expose the configured regex pattern to failure messages.
 - 2026-09-28 — Add early synchronous and awaited prevalidation to async validators.
 - 2026-09-28 — Rewrite the package README around a checked example and stable API areas.
+- 2026-09-28 — Repair CI workflow parsing so checks run before release.
