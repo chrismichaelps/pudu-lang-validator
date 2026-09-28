@@ -8,3 +8,4 @@
 - 2026-09-27 — Add nested asynchronous composition and awaited conditions.
 - 2026-09-27 — Unify concrete and wildcard property path selection across root and nested rules.
 - 2026-09-27 — Add failure message arguments to typed checks and built-in bounds.
+- 2026-09-27 — Add source-dependent severity and state to sync and async failures.

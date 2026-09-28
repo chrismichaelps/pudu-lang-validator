@@ -19,7 +19,9 @@ export type Check[T, V] = {
   arguments: Array[(Str, fn(T, V) -> Str)],
   code: Str,
   severity: Validation.Severity,
-  state: Str
+  severityFactory: Option[fn(T, V) -> Validation.Severity],
+  state: Str,
+  stateFactory: Option[fn(T, V) -> Str]
 }
 
 /** @Validation.Rule.RuleBuilder — keeps property checks typed until build */
@@ -62,7 +64,9 @@ export fn mustWithContext[T, V](
     arguments: [],
     code: "Predicate",
     severity: Validation.Error,
-    state: ""
+    severityFactory: None,
+    state: "",
+    stateFactory: None
   }
   RuleBuilder{..builder, checks: builder.checks.push(check)}
 }
@@ -138,7 +142,17 @@ export fn withCode[T, V](builder: RuleBuilder[T, V], code: Str) -> RuleBuilder[T
 /// Classify the most recent failure.
 export fn withSeverity[T, V](builder: RuleBuilder[T, V], severity: Validation.Severity) -> RuleBuilder[T, V] {
   match List.last(&builder.checks) {
-    case Some(check) => replaceLast(builder, Check{..check, severity: severity})
+    case Some(check) => replaceLast(builder, Check{..check, severity: severity, severityFactory: None})
+    case None => builder
+  }
+}
+
+/// Compute the latest check's severity from its source and property.
+export fn withSeverityFrom[T, V](
+  builder: RuleBuilder[T, V], severity: fn(T, V) -> Validation.Severity
+) -> RuleBuilder[T, V] {
+  match List.last(&builder.checks) {
+    case Some(check) => replaceLast(builder, Check{..check, severityFactory: Some(severity)})
     case None => builder
   }
 }
@@ -146,7 +160,15 @@ export fn withSeverity[T, V](builder: RuleBuilder[T, V], severity: Validation.Se
 /// Attach application state to the most recent failure.
 export fn withState[T, V](builder: RuleBuilder[T, V], state: Str) -> RuleBuilder[T, V] {
   match List.last(&builder.checks) {
-    case Some(check) => replaceLast(builder, Check{..check, state: state})
+    case Some(check) => replaceLast(builder, Check{..check, state: state, stateFactory: None})
+    case None => builder
+  }
+}
+
+/// Compute the latest check's state from its source and property.
+export fn withStateFrom[T, V](builder: RuleBuilder[T, V], state: fn(T, V) -> Str) -> RuleBuilder[T, V] {
+  match List.last(&builder.checks) {
+    case Some(check) => replaceLast(builder, Check{..check, stateFactory: Some(state)})
     case None => builder
   }
 }
@@ -204,9 +226,17 @@ export fn build[T, V](builder: RuleBuilder[T, V]) -> Rule[T] {
             case None => check.message
           }
           let message = render(template, displayName, name, root, value, &check.arguments)
+          let severity = match check.severityFactory {
+            case Some(factory) => factory(root, value)
+            case None => check.severity
+          }
+          let state = match check.stateFactory {
+            case Some(factory) => factory(root, value)
+            case None => check.state
+          }
           failures = failures.push(Validation.Failure {
               propertyName: name, errorMessage: message, errorCode: check.code,
-              severity: check.severity, customState: check.state
+              severity: severity, customState: state
             })
           if builder.stop { break }
         }

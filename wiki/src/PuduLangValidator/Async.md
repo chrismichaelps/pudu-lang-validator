@@ -14,6 +14,8 @@ path: src/PuduLangValidator/Async.pudu
 
 `setValidatorAsync`, `setOptionalValidatorAsync`, and `forEachValidatorAsync` compose nested asynchronous validators, preserving context, selected rule sets, selected property paths, and source indices. `whenAsync` awaits a context-aware condition before running a rule. `customAsync` lets an awaited callback return zero or more structured failures.
 
+`withSeverityFrom` and `withStateFrom` derive metadata from the root source for failures returned by an async rule. Their static counterparts use the same decoration path.
+
 ## Algorithm and edge cases
 
 Async root and child rules use [[Selection]] for the same path relations as synchronous validation.
@@ -21,6 +23,8 @@ Async root and child rules use [[Selection]] for the same path relations as sync
 Selection runs once for an async rule. A false predicate emits one failure with the supplied path, message, and code. Array checks and filters are awaited in source order and retain original indices; unselected indices are skipped. Rules are awaited sequentially so failure order matches declaration order. `stopOnFirst` ends after the first failing rule. A rule's awaited work is cold until validation begins.
 
 A scalar async rule skips itself when only a descendant path is selected. Decorators preserve the context data unchanged; lifted rules receive the same data as native async rules.
+
+Metadata callbacks are replaceable rule fields, so a later setter prevents an earlier callback from running. They run only when a decorated rule emits failures. One computed value applies to that rule's failures in encounter order; the latest setter wins when several are composed.
 
 Child rules advertise their children's rule sets to the parent selection. Nested property names become child-relative before validation and are prefixed once afterward. Optional absence yields no child failures; a separate presence rule can reject it. Collection children retain original indices, and only requested indices are awaited. A false asynchronous condition performs no validation work.
 

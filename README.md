@@ -71,6 +71,8 @@ Use `Validator.includeProperties(Validator.defaults(), ["orders[].sku"])` to val
 
 Messages support `{PropertyName}`, `{PropertyPath}`, and `{PropertyValue}`. Built-in rules expose their bounds and measured values as named arguments; `Rule.withArgument` and `Rule.withArgumentFrom` let application rules provide their own.
 
+`Rule.withSeverityFrom` and `Rule.withStateFrom` derive failure metadata from the source and selected value. Async rules offer root-based variants with the same names.
+
 ## Developing
 
 ```sh
