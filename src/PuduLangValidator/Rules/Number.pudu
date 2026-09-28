@@ -1,0 +1,72 @@
+/** @Validation.Rules.Number.Module — checks integer property bounds */
+module PuduLangValidator.Rules.Number
+
+import PuduLangValidator.Rule as Rule
+
+/// Require a value greater than the bound.
+export fn greaterThan[T](builder: Rule.RuleBuilder[T, Int], bound: Int) -> Rule.RuleBuilder[T, Int] {
+  Rule.withArgument(Rule.withCode(Rule.withMessage(Rule.must(builder, |value: Int| value > bound),
+        "Number must be greater than \{ComparisonValue\}."), "GreaterThan"), "ComparisonValue", show(bound))
+}
+
+/// Require a value at least as large as the bound.
+export fn greaterThanOrEqualTo[T](builder: Rule.RuleBuilder[T, Int], bound: Int) -> Rule.RuleBuilder[T, Int] {
+  Rule.withArgument(Rule.withCode(Rule.withMessage(Rule.must(builder, |value: Int| value >= bound),
+        "Number must be at least \{ComparisonValue\}."), "GreaterThanOrEqualTo"), "ComparisonValue", show(bound))
+}
+
+/// Require a value below the bound.
+export fn lessThan[T](builder: Rule.RuleBuilder[T, Int], bound: Int) -> Rule.RuleBuilder[T, Int] {
+  Rule.withArgument(Rule.withCode(Rule.withMessage(Rule.must(builder, |value: Int| value < bound),
+        "Number must be less than \{ComparisonValue\}."), "LessThan"), "ComparisonValue", show(bound))
+}
+
+/// Require a value no larger than the bound.
+export fn lessThanOrEqualTo[T](builder: Rule.RuleBuilder[T, Int], bound: Int) -> Rule.RuleBuilder[T, Int] {
+  Rule.withArgument(Rule.withCode(Rule.withMessage(Rule.must(builder, |value: Int| value <= bound),
+        "Number must be at most \{ComparisonValue\}."), "LessThanOrEqualTo"), "ComparisonValue", show(bound))
+}
+
+/// Require a value within inclusive bounds.
+export fn inclusiveBetween[T](builder: Rule.RuleBuilder[T, Int], low: Int, high: Int) -> Rule.RuleBuilder[T, Int] {
+  let checked = Rule.withCode(Rule.withMessage(Rule.must(builder, |value: Int| value >= low && value <= high),
+      "Number must be from \{From\} through \{To\}."), "InclusiveBetween")
+  Rule.withArgument(Rule.withArgument(checked, "From", show(low)), "To", show(high))
+}
+
+/// Require a value strictly inside the bounds.
+export fn exclusiveBetween[T](builder: Rule.RuleBuilder[T, Int], low: Int, high: Int) -> Rule.RuleBuilder[T, Int] {
+  let checked = Rule.withCode(Rule.withMessage(Rule.must(builder, |value: Int| value > low && value < high),
+      "Number must be between \{From\} and \{To\}, excluding both."), "ExclusiveBetween")
+  Rule.withArgument(Rule.withArgument(checked, "From", show(low)), "To", show(high))
+}
+
+/// Require a value equal to the expected integer.
+export fn equal[T](builder: Rule.RuleBuilder[T, Int], expected: Int) -> Rule.RuleBuilder[T, Int] {
+  Rule.withArgument(Rule.withCode(Rule.withMessage(Rule.must(builder, |value: Int| value == expected),
+        "Number must equal \{ComparisonValue\}."), "Equal"), "ComparisonValue", show(expected))
+}
+
+/// Require a value different from the excluded integer.
+export fn notEqual[T](builder: Rule.RuleBuilder[T, Int], excluded: Int) -> Rule.RuleBuilder[T, Int] {
+  Rule.withArgument(Rule.withCode(Rule.withMessage(Rule.must(builder, |value: Int| value != excluded),
+        "Number must differ from \{ComparisonValue\}."), "NotEqual"), "ComparisonValue", show(excluded))
+}
+
+/// Reject the integer default value of zero.
+export fn notEmpty[T](builder: Rule.RuleBuilder[T, Int]) -> Rule.RuleBuilder[T, Int] {
+  Rule.withCode(Rule.withMessage(Rule.must(builder, |value: Int| value != 0),
+      "Number must be nonzero."), "NotEmpty")
+}
+
+/// Require the integer default value of zero.
+export fn empty[T](builder: Rule.RuleBuilder[T, Int]) -> Rule.RuleBuilder[T, Int] {
+  Rule.withCode(Rule.withMessage(Rule.must(builder, |value: Int| value == 0),
+      "Number must be zero."), "Empty")
+}
+
+/// Require membership among explicit numeric enum discriminants.
+export fn isInEnum[T](builder: Rule.RuleBuilder[T, Int], valid: Array[Int]) -> Rule.RuleBuilder[T, Int] {
+  Rule.withCode(Rule.withMessage(Rule.must(builder, |value: Int| valid.contains(value)),
+      "Number is outside the named cases."), "IsInEnum")
+}

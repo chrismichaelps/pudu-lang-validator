@@ -1,0 +1,77 @@
+/** @Test.Validation.TestingQuery.Suite — checks chained failure assertions */
+module PuduLangValidator.TestingQueryTest
+
+import Std.Test as Test
+import PuduLangValidator.Async as Async
+import PuduLangValidator.Result as Validation
+import PuduLangValidator.Rule as Rule
+import PuduLangValidator.Testing as Checking
+import PuduLangValidator.Validator as Validator
+
+type Model = { name: Str, age: Int }
+
+async fn isReady(_root: Model, value: Str) -> Bool { value == "ready" }
+
+async fn main() -> Int {
+  let errors = Validation.fromFailures([
+      Validation.Failure{propertyName: "items[0].name", errorMessage: "required", errorCode: "Missing",
+        severity: Validation.Error, customState: "first" },
+      Validation.Failure{propertyName: "items[0].name", errorMessage: "too short", errorCode: "Length",
+        severity: Validation.Warning, customState: "second" },
+      Validation.Failure{propertyName: "age", errorMessage: "young", errorCode: "Range",
+        severity: Validation.Info, customState: "third" }
+    ])
+  let item = Checking.forProperty(&errors, "items[0].name")
+  let required = Checking.withState(Checking.withSeverity(
+      Checking.withCode(Checking.withMessage(item, "required"), "Missing"), Validation.Error), "first")
+  let inverse = Checking.withoutState(Checking.withoutSeverity(
+      Checking.withoutCode(Checking.withoutMessage(item, "required"), "Missing"), Validation.Error), "first")
+  let empty = Validation.fromFailures([])
+  let one = Validation.fromFailures([errors.errors[0]])
+  let samePath = Validation.fromFailures([errors.errors[0], errors.errors[1]])
+  let built = Rule.build(Rule.withCode(Rule.must(
+        Rule.ruleFor("name", |model: Model| model.name), |name: Str| !name.isEmpty()), "Missing"))
+  let sync = Validator.add(Validator.create(), built)
+  let namedSync = Validator.add(Validator.create(), Rule.build(Rule.inRuleSet(Rule.withCode(
+          Rule.must(Rule.ruleFor("name", |model: Model| model.name), |name: Str| !name.isEmpty()), "Missing"), "named")))
+  let bad = Model{name: "", age: 2}
+  let syncResult = Checking.testValidate(&sync, bad)
+  let selectedOut = Checking.testValidateWith(&sync, bad, Validator.includeProperties(Validator.defaults(), ["age"]))
+  let namedSyncDefault = Checking.testValidate(&namedSync, bad)
+  let namedSyncSelected = Checking.testValidateWith(&namedSync, bad, Validator.onlyRuleSets(["named"]))
+  let awaited = Async.add(Async.create(), Async.mustAsync("name", |model: Model| model.name,
+      isReady, "not ready", "NotReady"))
+  let namedAsync = Async.add(Async.create(), Async.inRuleSet(Async.mustAsync("name",
+        |model: Model| model.name, isReady, "not ready", "NotReady"), "named"))
+  let asyncResult = Checking.testValidateAsync(&awaited, bad).await
+  let asyncSelectedOut = Checking.testValidateAsyncWith(&awaited, bad,
+    Validator.includeProperties(Validator.defaults(), ["age"])).await
+  let namedAsyncDefault = Checking.testValidateAsync(&namedAsync, bad).await
+  let namedAsyncSelected = Checking.testValidateAsyncWith(&namedAsync, bad,
+    Validator.onlyRuleSets(["named"])).await
+  let checks = Test.suite("TestingQuery", &[
+      Test.that("exact indexed path retains both failures", item.matched.length() == 2),
+      Test.that("metadata chain retains one matching failure", required.matched.length() == 1),
+      Test.that("inverse chain retains the other failure", inverse.matched.length() == 1),
+      Test.that("query recognizes matching failures", Checking.hasAny(&required)),
+      Test.that("query recognizes absent path", Checking.hasNone(&Checking.forProperty(&errors, "items[1].name"))),
+      Test.that("excluded metadata leaves no match", Checking.hasNone(&Checking.withoutCode(
+            Checking.forProperty(&one, "items[0].name"), "Missing"))),
+      Test.that("extra failure prevents only", !Checking.only(&item)),
+      Test.that("filtered sibling failure prevents only", !Checking.only(&Checking.withMessage(
+            Checking.forProperty(&samePath, "items[0].name"), "required"))),
+      Test.that("unfiltered repeated path satisfies only", Checking.only(&Checking.forProperty(&samePath, "items[0].name"))),
+      Test.that("all matched failures satisfy only", Checking.only(&Checking.forProperty(&one, "items[0].name"))),
+      Test.that("empty result does not satisfy only", !Checking.only(&Checking.forProperty(&empty, "name"))),
+      Test.that("empty result satisfies has none", Checking.hasNone(&Checking.forProperty(&empty, "name"))),
+      Test.that("sync test entry runs validator", Checking.hasCode(&syncResult, "Missing")),
+      Test.that("sync test entry honors selected paths", selectedOut.isValid),
+      Test.that("sync default skips named rule", namedSyncDefault.isValid),
+      Test.that("sync selected set includes named rule", Checking.hasCode(&namedSyncSelected, "Missing")),
+      Test.that("async test entry awaits validator", Checking.hasCode(&asyncResult, "NotReady")),
+      Test.that("async test entry honors selected paths", asyncSelectedOut.isValid),
+      Test.that("async default skips named rule", namedAsyncDefault.isValid),
+      Test.that("async selected set includes named rule", Checking.hasCode(&namedAsyncSelected, "NotReady"))
+    ])
+  Test.report(&Test.run(&checks))
+}

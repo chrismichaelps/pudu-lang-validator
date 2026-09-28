@@ -1,0 +1,41 @@
+/** @Validation.Rules.Decimal.Module — checks exact decimal shape */
+module PuduLangValidator.Rules.Decimal
+
+import Std.Text as Text
+import PuduLangValidator.Rule as Rule
+
+/** @Validation.Rules.Decimal.Shape — counts displayed decimal digits */
+type Shape = { precision: Int, scale: Int, wholeDigits: Int }
+
+/// Reserve `precision - scale` whole digits and allow at most `scale` fractional digits.
+export fn precisionScale[T](
+  builder: Rule.RuleBuilder[T, Decimal], precision: Int, scale: Int, ignoreTrailingZeros: Bool
+) -> Rule.RuleBuilder[T, Decimal] {
+  let checked = Rule.withCode(Rule.withMessage(Rule.mustWithArguments(builder,
+        fn(_root: T, value: Decimal) -> Option[Array[(Str, Str)]] {
+          let actual = shape(value, ignoreTrailingZeros)
+          if precision >= 1 && scale >= 0 && scale <= precision &&
+          actual.precision <= precision && actual.scale <= scale &&
+          actual.wholeDigits <= precision - scale {
+            None
+          } else {
+            Some([("Digits", show(actual.precision)), ("ActualScale", show(actual.scale))])
+          }
+        }), "Decimal must fit \{ExpectedPrecision\} digits with at most \{ExpectedScale\} after the point."), "PrecisionScale")
+  Rule.withArgument(Rule.withArgument(checked, "ExpectedPrecision", show(precision)),
+    "ExpectedScale", show(scale))
+}
+
+/// Count significant integer digits and retained fractional digits.
+fn shape(value: Decimal, ignoreTrailingZeros: Bool) -> Shape {
+  let rendered = value.toText()
+  let unsigned = if rendered.startsWith("-") { Text.drop(rendered, 1) } else { rendered }
+  let parts = unsigned.split(".")
+  let whole = Text.dropWhile(parts[0], |character: Char| character == '0')
+  let fractional = if parts.length() > 1 { parts[1] } else { "" }
+  let kept = if ignoreTrailingZeros {
+    Text.dropWhileEnd(fractional, |character: Char| character == '0')
+  } else { fractional }
+  let digits = whole.length() + kept.length()
+  Shape{precision: if digits == 0 { 1 } else { digits }, scale: kept.length(), wholeDigits: whole.length()}
+}

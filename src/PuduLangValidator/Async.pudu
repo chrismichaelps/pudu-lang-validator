@@ -1,0 +1,320 @@
+/** @Validation.Async.Engine — awaits typed validation checks */
+module PuduLangValidator.Async
+
+import Std.List as List
+import PuduLangValidator.Result as Validation
+import PuduLangValidator.Rule as Rule
+import PuduLangValidator.Selection as Selection
+import PuduLangValidator.Validator as Validator
+
+/** @Validation.Async.Rule — owns one asynchronous source check */
+export type AsyncRule[T] = {
+  name: Str,
+  ruleSets: Array[Str],
+  severityOverride: Option[fn(T) -> Validation.Severity],
+  stateOverride: Option[fn(T) -> Str],
+  run: async fn(T, Validator.Options, Rule.ContextData) -> Array[Validation.Failure]
+}
+
+/** @Validation.Async.Validator — orders asynchronous and lifted rules */
+export type AsyncValidator[T] = {
+  rules: Array[AsyncRule[T]],
+  stop: Bool,
+  preflight: async fn(T, Rule.ContextData) -> Option[Array[Validation.Failure]]
+}
+
+/// Build an asynchronous check for a typed property.
+export fn mustAsync[T, V](
+  name: Str, select: fn(T) -> V, test: async fn(T, V) -> Bool,
+  message: Str, code: Str
+) -> AsyncRule[T] {
+  mustAsyncWithContext(name, select,
+    async fn(root: T, value: V, _data: Rule.ContextData) -> Bool { test(root, value).await },
+    message, code)
+}
+
+/// Build an awaited property check that may read immutable root data.
+export fn mustAsyncWithContext[T, V](
+  name: Str, select: fn(T) -> V, test: async fn(T, V, Rule.ContextData) -> Bool,
+  message: Str, code: Str
+) -> AsyncRule[T] {
+  AsyncRule{name: name, ruleSets: [], severityOverride: None, stateOverride: None, run: async fn(root: T, options: Validator.Options, data: Rule.ContextData) -> Array[Validation.Failure] {
+      if !options.properties.isEmpty() && !List.any(&options.properties, |wanted: Str| Selection.covers(wanted, name)) { return [] }
+      let value = select(root)
+      if test(root, value, data).await { [] } else { [Validation.Failure {
+            propertyName: name,
+            errorMessage: message.replace("\{PropertyName\}", name)
+              .replace("\{PropertyPath\}", name)
+              .replace("\{PropertyValue\}", value.toText()),
+            errorCode: code, severity: Validation.Error, customState: ""
+          }] }
+    } }
+}
+
+/// Check every array element asynchronously in source order.
+export fn forEachAsync[T, V](
+  name: Str, select: fn(T) -> Array[V], test: async fn(T, V) -> Bool,
+  message: Str, code: Str
+) -> AsyncRule[T] {
+  forEachWhereAsync(name, select, async fn(_item: V) -> Bool { true }, test, message, code)
+}
+
+/// Await a filter and check for each selected array element.
+export fn forEachWhereAsync[T, V](
+  name: Str, select: fn(T) -> Array[V], keep: async fn(V) -> Bool,
+  test: async fn(T, V) -> Bool, message: Str, code: Str
+) -> AsyncRule[T] {
+  forEachWhereAsyncWithContext(name, select,
+    async fn(item: V, _data: Rule.ContextData) -> Bool { keep(item).await },
+    async fn(root: T, item: V, _data: Rule.ContextData) -> Bool { test(root, item).await },
+    message, code)
+}
+
+/// Await a context-aware filter and predicate for each selected item.
+export fn forEachWhereAsyncWithContext[T, V](
+  name: Str, select: fn(T) -> Array[V], keep: async fn(V, Rule.ContextData) -> Bool,
+  test: async fn(T, V, Rule.ContextData) -> Bool, message: Str, code: Str
+) -> AsyncRule[T] {
+  AsyncRule{name: name, ruleSets: [], severityOverride: None, stateOverride: None, run: async fn(root: T, options: Validator.Options, data: Rule.ContextData) -> Array[Validation.Failure] {
+      var failures: Array[Validation.Failure] = []
+      var index = 0
+      for item in select(root) {
+        let path = name + "[" + show(index) + "]"
+        if selectedScalarElement(path, &options.properties) && keep(item, data).await && !test(root, item, data).await {
+          failures = failures.push(Validation.Failure {
+              propertyName: path,
+              errorMessage: message.replace("\{PropertyName\}", name)
+                .replace("\{PropertyPath\}", path)
+                .replace("\{CollectionIndex\}", show(index)),
+              errorCode: code, severity: Validation.Error, customState: ""
+            })
+        }
+        index = index + 1
+      }
+      failures
+    } }
+}
+
+/// Lift a synchronous rule into an async validator.
+export fn fromSync[T](rule: Rule.Rule[T]) -> AsyncRule[T] {
+  let name = rule.name
+  let sets = rule.ruleSets
+  AsyncRule{name: name, ruleSets: sets, severityOverride: None, stateOverride: None, run: async fn(root: T, options: Validator.Options, data: Rule.ContextData) -> Array[Validation.Failure] {
+      rule.run(root, options.ruleSets, options.includeDefault, options.properties, data)
+    } }
+}
+
+/// Run this asynchronous rule in a named rule set.
+export fn inRuleSet[T](rule: AsyncRule[T], name: Str) -> AsyncRule[T] {
+  if rule.ruleSets.contains(name) { rule } else { AsyncRule{..rule, ruleSets: rule.ruleSets.push(name)} }
+}
+
+/// Classify every failure from this asynchronous rule.
+export fn withSeverity[T](rule: AsyncRule[T], severity: Validation.Severity) -> AsyncRule[T] {
+  withSeverityFrom(rule, fn(_root: T) -> Validation.Severity { severity })
+}
+
+/// Classify this rule's failures from the root source.
+export fn withSeverityFrom[T](rule: AsyncRule[T], severity: fn(T) -> Validation.Severity) -> AsyncRule[T] {
+  AsyncRule{..rule, severityOverride: Some(severity)}
+}
+
+/// Attach application state to every failure from this rule.
+export fn withState[T](rule: AsyncRule[T], state: Str) -> AsyncRule[T] {
+  withStateFrom(rule, fn(_root: T) -> Str { state })
+}
+
+/// Attach source-dependent state to this rule's failures.
+export fn withStateFrom[T](rule: AsyncRule[T], state: fn(T) -> Str) -> AsyncRule[T] {
+  AsyncRule{..rule, stateOverride: Some(state)}
+}
+
+/// Run an asynchronous rule only when the source condition holds.
+export fn when[T](rule: AsyncRule[T], condition: fn(T) -> Bool) -> AsyncRule[T] {
+  let name = rule.name
+  let sets = rule.ruleSets
+  AsyncRule{name: name, ruleSets: sets, severityOverride: rule.severityOverride, stateOverride: rule.stateOverride, run: async fn(root: T, options: Validator.Options, data: Rule.ContextData) -> Array[Validation.Failure] {
+      if condition(root) { rule.run(root, options, data).await } else { [] }
+    } }
+}
+
+/// Await a condition before running an asynchronous rule.
+export fn whenAsync[T](rule: AsyncRule[T], condition: async fn(T, Rule.ContextData) -> Bool) -> AsyncRule[T] {
+  let name = rule.name
+  let sets = rule.ruleSets
+  AsyncRule{name: name, ruleSets: sets, severityOverride: rule.severityOverride, stateOverride: rule.stateOverride, run: async fn(root: T, options: Validator.Options, data: Rule.ContextData) -> Array[Validation.Failure] {
+      if condition(root, data).await { rule.run(root, options, data).await } else { [] }
+    } }
+}
+
+/// Await application code that reports structured failures.
+export fn customAsync[T](
+  name: Str, check: async fn(T, Rule.ContextData) -> Array[Validation.Failure]
+) -> AsyncRule[T] {
+  AsyncRule{name: name, ruleSets: [], severityOverride: None, stateOverride: None, run: async fn(root: T, _options: Validator.Options, data: Rule.ContextData) -> Array[Validation.Failure] {
+      check(root, data).await
+    } }
+}
+
+/// Await a child validator and prefix its failure paths.
+export fn setValidatorAsync[T, V](name: Str, select: fn(T) -> V, child: AsyncValidator[V]) -> AsyncRule[T] {
+  let sets = childSets(&child)
+  AsyncRule{name: name, ruleSets: sets, severityOverride: None, stateOverride: None, run: async fn(root: T, options: Validator.Options, data: Rule.ContextData) -> Array[Validation.Failure] {
+      let inner = Validator.Options{..options, properties: childProperties(name, &options.properties)}
+      prefixFailures(name, &validateAsyncWithData(&child, select(root), inner, data).await.errors)
+    } }
+}
+
+/// Skip an absent child and await validation when a value is present.
+export fn setOptionalValidatorAsync[T, V](
+  name: Str, select: fn(T) -> Option[V], child: AsyncValidator[V]
+) -> AsyncRule[T] {
+  let sets = childSets(&child)
+  AsyncRule{name: name, ruleSets: sets, severityOverride: None, stateOverride: None, run: async fn(root: T, options: Validator.Options, data: Rule.ContextData) -> Array[Validation.Failure] {
+      match select(root) {
+        case Some(value) => {
+          let inner = Validator.Options{..options, properties: childProperties(name, &options.properties)}
+          prefixFailures(name, &validateAsyncWithData(&child, value, inner, data).await.errors)
+        }
+        case None => []
+      }
+    } }
+}
+
+/// Await one child validator per selected array element in source order.
+export fn forEachValidatorAsync[T, V](
+  name: Str, select: fn(T) -> Array[V], child: AsyncValidator[V]
+) -> AsyncRule[T] {
+  let sets = childSets(&child)
+  AsyncRule{name: name, ruleSets: sets, severityOverride: None, stateOverride: None, run: async fn(root: T, options: Validator.Options, data: Rule.ContextData) -> Array[Validation.Failure] {
+      var failures: Array[Validation.Failure] = []
+      var index = 0
+      for value in select(root) {
+        let path = name + "[" + show(index) + "]"
+        if selectedElement(path, &options.properties) {
+          let inner = Validator.Options{..options, properties: childProperties(path, &options.properties)}
+          for failure in prefixFailures(path, &validateAsyncWithData(&child, value, inner, data).await.errors) {
+            failures = failures.push(failure)
+          }
+        }
+        index = index + 1
+      }
+      failures
+    } }
+}
+
+/// A validator with no asynchronous rules.
+export fn create[T]() -> AsyncValidator[T] {
+  AsyncValidator{rules: [], stop: false,
+    preflight: async fn(_root: T, _data: Rule.ContextData) -> Option[Array[Validation.Failure]] { None } }
+}
+
+/// Return Some failures to stop, including an empty success, or None to run rules.
+export fn withPreValidation[T](
+  validator: AsyncValidator[T], preflight: fn(T) -> Option[Array[Validation.Failure]]
+) -> AsyncValidator[T] {
+  withPreValidationAsync(validator,
+    async fn(root: T, _data: Rule.ContextData) -> Option[Array[Validation.Failure]] { preflight(root) })
+}
+
+/// Await root and context checks before selecting asynchronous rules.
+export fn withPreValidationAsync[T](
+  validator: AsyncValidator[T], preflight: async fn(T, Rule.ContextData) -> Option[Array[Validation.Failure]]
+) -> AsyncValidator[T] {
+  AsyncValidator{..validator, preflight: preflight}
+}
+
+/// Append an asynchronous rule in execution order.
+export fn add[T](validator: AsyncValidator[T], rule: AsyncRule[T]) -> AsyncValidator[T] {
+  AsyncValidator{..validator, rules: validator.rules.push(rule)}
+}
+
+/// Stop after the first asynchronous rule that reports failures.
+export fn stopOnFirst[T](validator: AsyncValidator[T]) -> AsyncValidator[T] {
+  AsyncValidator{..validator, stop: true}
+}
+
+/// Await unnamed rules in declaration order and collect failures.
+export async fn validateAsync[T](validator: &AsyncValidator[T], root: T) -> Validation.ValidationResult {
+  validateAsyncWith(validator, root, Validator.defaults()).await
+}
+
+/// Await selected rules in declaration order and collect failures.
+export async fn validateAsyncWith[T](
+  validator: &AsyncValidator[T], root: T, options: Validator.Options
+) -> Validation.ValidationResult {
+  validateAsyncWithData(validator, root, options, mapOf([])).await
+}
+
+/// Await selected rules with immutable application context data.
+export async fn validateAsyncWithData[T](
+  validator: &AsyncValidator[T], root: T, options: Validator.Options, data: Rule.ContextData
+) -> Validation.ValidationResult {
+  if let Some(early) = validator.preflight(root, data).await { return Validation.fromFailures(early) }
+  var failures: Array[Validation.Failure] = []
+  for rule in validator.rules {
+    if Validator.accepts(rule.name, &rule.ruleSets, &options) {
+      let found = rule.run(root, options, data).await
+      if !found.isEmpty() {
+        let severity = match rule.severityOverride {
+          case Some(factory) => Some(factory(root))
+          case None => None
+        }
+        let state = match rule.stateOverride {
+          case Some(factory) => Some(factory(root))
+          case None => None
+        }
+        for failure in found {
+          failures = failures.push(Validation.Failure {
+              ..failure,
+              severity: match severity { case Some(selected) => selected case None => failure.severity },
+              customState: match state { case Some(selected) => selected case None => failure.customState }
+            })
+        }
+      }
+      if validator.stop && !found.isEmpty() { break }
+    }
+  }
+  Validation.fromFailures(failures)
+}
+
+/// Whether an indexed element is part of property selection.
+fn selectedElement(path: Str, properties: &Array[Str]) -> Bool {
+  properties.isEmpty() || List.any(properties, |wanted: Str| Selection.overlaps(wanted, path))
+}
+
+/// Whether a requested path selects this scalar array element.
+fn selectedScalarElement(path: Str, properties: &Array[Str]) -> Bool {
+  properties.isEmpty() || List.any(properties, |wanted: Str| Selection.covers(wanted, path))
+}
+
+/// Rule-set tags visible through a nested async validator.
+fn childSets[V](child: &AsyncValidator[V]) -> Array[Str] {
+  var sets: Array[Str] = []
+  for rule in child.rules {
+    if rule.ruleSets.isEmpty() && !sets.contains("default") { sets = sets.push("default") }
+    for name in rule.ruleSets {
+      if !sets.contains(name) { sets = sets.push(name) }
+    }
+  }
+  sets
+}
+
+/// Translate root selections into paths relative to a child.
+fn childProperties(name: Str, properties: &Array[Str]) -> Array[Str] {
+  if name.isEmpty() { return *properties }
+  var selected: Array[Str] = []
+  for wanted in *properties {
+    if Selection.covers(wanted, name) { return [] }
+    if let Some(relative) = Selection.relative(wanted, name) { selected = selected.push(relative) }
+  }
+  selected
+}
+
+/// Add the parent path to each child failure exactly once.
+fn prefixFailures(name: Str, failures: &Array[Validation.Failure]) -> Array[Validation.Failure] {
+  failures.map(|failure: Validation.Failure| Validation.Failure {
+      ..failure,
+      propertyName: if name.isEmpty() { failure.propertyName } else if failure.propertyName.isEmpty() { name } else { name + "." + failure.propertyName }
+    })
+}

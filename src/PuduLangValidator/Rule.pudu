@@ -1,0 +1,313 @@
+/** @Validation.Rule.Engine — evaluates typed property checks */
+module PuduLangValidator.Rule
+
+import Std.Json as Json
+import Std.List as List
+import Std.Text as Text
+import PuduLangValidator.Result as Validation
+import PuduLangValidator.Selection as Selection
+
+/** @Validation.Rule.ContextData — shares immutable application data */
+export type ContextData = Map[Str, Json.Json]
+
+/** @Validation.Rule.Check — binds predicate and failure metadata */
+export type Check[T, V] = {
+  test: fn(T, V, ContextData) -> Option[Array[(Str, Str)]],
+  condition: fn(T) -> Bool,
+  message: Str,
+  messageFactory: Option[fn(T, V) -> Str],
+  arguments: Array[(Str, fn(T, V) -> Str)],
+  code: Str,
+  severity: Validation.Severity,
+  severityFactory: Option[fn(T, V) -> Validation.Severity],
+  state: Str,
+  stateFactory: Option[fn(T, V) -> Str]
+}
+
+/** @Validation.Rule.RuleBuilder — keeps property checks typed until build */
+export type RuleBuilder[T, V] = {
+  name: Str,
+  displayName: Str,
+  select: fn(T) -> V,
+  checks: Array[Check[T, V]],
+  ruleSets: Array[Str],
+  stop: Bool
+}
+
+/** @Validation.Rule.Rule — runs a property rule over its source */
+export type Rule[T] = { name: Str, ruleSets: Array[Str], run: fn(T, Array[Str], Bool, Array[Str], ContextData) -> Array[Validation.Failure] }
+
+/// Start a rule with its public property path and typed selector.
+export fn ruleFor[T, V](name: Str, select: fn(T) -> V) -> RuleBuilder[T, V] {
+  RuleBuilder{name: name, displayName: name, select: select, checks: [], ruleSets: [], stop: false}
+}
+
+/// Require a property predicate to hold.
+export fn must[T, V](builder: RuleBuilder[T, V], test: fn(V) -> Bool) -> RuleBuilder[T, V] {
+  mustWith(builder, fn(_root: T, value: V) -> Bool { test(value) })
+}
+
+/// Require a predicate that may inspect the source and property.
+export fn mustWith[T, V](builder: RuleBuilder[T, V], test: fn(T, V) -> Bool) -> RuleBuilder[T, V] {
+  mustWithContext(builder, fn(root: T, value: V, _data: ContextData) -> Bool { test(root, value) })
+}
+
+/// Require a predicate that may read immutable root context data.
+export fn mustWithContext[T, V](
+  builder: RuleBuilder[T, V], test: fn(T, V, ContextData) -> Bool
+) -> RuleBuilder[T, V] {
+  addCheck(builder, fn(root: T, value: V, data: ContextData) -> Option[Array[(Str, Str)]] {
+      if test(root, value, data) { None } else { Some([]) }
+    })
+}
+
+/// Capture message arguments while deciding whether a check fails.
+export fn mustWithArguments[T, V](
+  builder: RuleBuilder[T, V], test: fn(T, V) -> Option[Array[(Str, Str)]]
+) -> RuleBuilder[T, V] {
+  addCheck(builder, fn(root: T, value: V, _data: ContextData) -> Option[Array[(Str, Str)]] {
+      test(root, value)
+    })
+}
+
+fn addCheck[T, V](
+  builder: RuleBuilder[T, V], test: fn(T, V, ContextData) -> Option[Array[(Str, Str)]]
+) -> RuleBuilder[T, V] {
+  let check = Check {
+    test: test,
+    condition: fn(_root: T) -> Bool { true },
+    message: "The value of \{PropertyName\} did not satisfy its rule.",
+    messageFactory: None,
+    arguments: [],
+    code: "Predicate",
+    severity: Validation.Error,
+    severityFactory: None,
+    state: "",
+    stateFactory: None
+  }
+  RuleBuilder{..builder, checks: builder.checks.push(check)}
+}
+
+/// Replace the most recent check without changing its position.
+fn replaceLast[T, V](builder: RuleBuilder[T, V], replacement: Check[T, V]) -> RuleBuilder[T, V] {
+  var checks: Array[Check[T, V]] = []
+  var index = 0
+  let last = builder.checks.length() - 1
+  for check in builder.checks {
+    checks = checks.push(if index == last { replacement } else { check })
+    index = index + 1
+  }
+  RuleBuilder{..builder, checks: checks}
+}
+
+/// Use this message for the most recent failed check.
+export fn withMessage[T, V](builder: RuleBuilder[T, V], message: Str) -> RuleBuilder[T, V] {
+  match List.last(&builder.checks) {
+    case Some(check) => replaceLast(builder, Check{..check, message: message, messageFactory: None})
+    case None => builder
+  }
+}
+
+/// Compute the latest failure message from its source and property.
+export fn withMessageFrom[T, V](builder: RuleBuilder[T, V], message: fn(T, V) -> Str) -> RuleBuilder[T, V] {
+  match List.last(&builder.checks) {
+    case Some(check) => replaceLast(builder, Check{..check, messageFactory: Some(message)})
+    case None => builder
+  }
+}
+
+/// Set a named message value on the latest check.
+export fn withArgument[T, V](builder: RuleBuilder[T, V], name: Str, value: Str) -> RuleBuilder[T, V] {
+  withArgumentFrom(builder, name, fn(_root: T, _property: V) -> Str { value })
+}
+
+/// Compute a named message value only when the latest check fails.
+export fn withArgumentFrom[T, V](
+  builder: RuleBuilder[T, V], name: Str, value: fn(T, V) -> Str
+) -> RuleBuilder[T, V] {
+  if name.isEmpty() || name == "PropertyName" || name == "PropertyPath" || name == "PropertyValue" { return builder }
+  match List.last(&builder.checks) {
+    case Some(check) => {
+      var arguments: Array[(Str, fn(T, V) -> Str)] = []
+      for entry in check.arguments {
+        if entry[0] != name { arguments = arguments.push(entry) }
+      }
+      replaceLast(builder, Check{..check, arguments: arguments.push((name, value))})
+    }
+    case None => builder
+  }
+}
+
+/// Use a readable name in message placeholders without changing the failure path.
+export fn withName[T, V](builder: RuleBuilder[T, V], name: Str) -> RuleBuilder[T, V] {
+  RuleBuilder{..builder, displayName: name}
+}
+
+/// Report failures at this path instead of the rule's original path.
+export fn overridePropertyName[T, V](builder: RuleBuilder[T, V], path: Str) -> RuleBuilder[T, V] {
+  RuleBuilder{..builder, name: path}
+}
+
+/// Use this stable error code for the most recent check.
+export fn withCode[T, V](builder: RuleBuilder[T, V], code: Str) -> RuleBuilder[T, V] {
+  match List.last(&builder.checks) {
+    case Some(check) => replaceLast(builder, Check{..check, code: code})
+    case None => builder
+  }
+}
+
+/// Classify the most recent failure.
+export fn withSeverity[T, V](builder: RuleBuilder[T, V], severity: Validation.Severity) -> RuleBuilder[T, V] {
+  match List.last(&builder.checks) {
+    case Some(check) => replaceLast(builder, Check{..check, severity: severity, severityFactory: None})
+    case None => builder
+  }
+}
+
+/// Compute the latest check's severity from its source and property.
+export fn withSeverityFrom[T, V](
+  builder: RuleBuilder[T, V], severity: fn(T, V) -> Validation.Severity
+) -> RuleBuilder[T, V] {
+  match List.last(&builder.checks) {
+    case Some(check) => replaceLast(builder, Check{..check, severityFactory: Some(severity)})
+    case None => builder
+  }
+}
+
+/// Attach application state to the most recent failure.
+export fn withState[T, V](builder: RuleBuilder[T, V], state: Str) -> RuleBuilder[T, V] {
+  match List.last(&builder.checks) {
+    case Some(check) => replaceLast(builder, Check{..check, state: state, stateFactory: None})
+    case None => builder
+  }
+}
+
+/// Compute the latest check's state from its source and property.
+export fn withStateFrom[T, V](builder: RuleBuilder[T, V], state: fn(T, V) -> Str) -> RuleBuilder[T, V] {
+  match List.last(&builder.checks) {
+    case Some(check) => replaceLast(builder, Check{..check, stateFactory: Some(state)})
+    case None => builder
+  }
+}
+
+/// Run every check in this chain only when the condition holds.
+export fn when[T, V](builder: RuleBuilder[T, V], condition: fn(T) -> Bool) -> RuleBuilder[T, V] {
+  RuleBuilder{..builder, checks: builder.checks.map(|check: Check[T, V]| Check {
+        ..check, condition: fn(root: T) -> Bool { check.condition(root) && condition(root) }
+      }) }
+}
+
+/// Skip every check in this chain when the condition holds.
+export fn unless[T, V](builder: RuleBuilder[T, V], condition: fn(T) -> Bool) -> RuleBuilder[T, V] {
+  when(builder, fn(root: T) -> Bool { !condition(root) })
+}
+
+/// Gate only the most recently added check.
+export fn whenCurrent[T, V](builder: RuleBuilder[T, V], condition: fn(T) -> Bool) -> RuleBuilder[T, V] {
+  match List.last(&builder.checks) {
+    case Some(check) => replaceLast(builder, Check {
+        ..check, condition: fn(root: T) -> Bool { check.condition(root) && condition(root) }
+      })
+    case None => builder
+  }
+}
+
+/// Skip only the most recent check when the condition holds.
+export fn unlessCurrent[T, V](builder: RuleBuilder[T, V], condition: fn(T) -> Bool) -> RuleBuilder[T, V] {
+  whenCurrent(builder, fn(root: T) -> Bool { !condition(root) })
+}
+
+/// Stop this property's chain after its first failure.
+export fn stopOnFirst[T, V](builder: RuleBuilder[T, V]) -> RuleBuilder[T, V] {
+  RuleBuilder{..builder, stop: true}
+}
+
+/// Run this rule when the named rule set is selected.
+export fn inRuleSet[T, V](builder: RuleBuilder[T, V], name: Str) -> RuleBuilder[T, V] {
+  if builder.ruleSets.contains(name) { builder } else { RuleBuilder{..builder, ruleSets: builder.ruleSets.push(name)} }
+}
+
+/// Freeze a property rule for use in a validator.
+export fn build[T, V](builder: RuleBuilder[T, V]) -> Rule[T] {
+  let name = builder.name
+  let displayName = builder.displayName
+  let sets = builder.ruleSets
+  Rule{name: name, ruleSets: sets, run: fn(root: T, _sets: Array[Str], _defaults: Bool, properties: Array[Str], data: ContextData) -> Array[Validation.Failure] {
+      if !properties.isEmpty() && !List.any(&properties, |wanted: Str| Selection.covers(wanted, name)) { return [] }
+      let value = builder.select(root)
+      var failures: Array[Validation.Failure] = []
+      for check in builder.checks {
+        let outcome = if check.condition(root) { check.test(root, value, data) } else { None }
+        if let Some(captured) = outcome {
+          let template = match check.messageFactory {
+            case Some(factory) => factory(root, value)
+            case None => check.message
+          }
+          let message = render(template, displayName, name, root, value, &check.arguments, &captured)
+          let severity = match check.severityFactory {
+            case Some(factory) => factory(root, value)
+            case None => check.severity
+          }
+          let state = match check.stateFactory {
+            case Some(factory) => factory(root, value)
+            case None => check.state
+          }
+          failures = failures.push(Validation.Failure {
+              propertyName: name, errorMessage: message, errorCode: check.code,
+              severity: severity, customState: state
+            })
+          if builder.stop { break }
+        }
+      }
+      failures
+    } }
+}
+
+/// Render only placeholders present in the chosen template.
+fn render[T, V](
+  template: Str, displayName: Str, path: Str, root: T, value: V,
+  arguments: &Array[(Str, fn(T, V) -> Str)], captured: &Array[(Str, Str)]
+) -> Str {
+  let chars = template.chars()
+  var pieces: Array[Str] = []
+  var literalStart = 0
+  var index = 0
+  while index < chars.length() {
+    if chars[index] != '{' {
+      index = index + 1
+      continue
+    }
+    var close = index + 1
+    while close < chars.length() && chars[close] != '}' { close = close + 1 }
+    if close == chars.length() { break }
+    let key = Text.take(Text.drop(template, index + 1), close - index - 1)
+    match argument(key, displayName, path, root, value, arguments, captured) {
+      case Some(replacement) => {
+        pieces = pieces.push(Text.take(Text.drop(template, literalStart), index - literalStart))
+        pieces = pieces.push(replacement)
+        index = close + 1
+        literalStart = index
+      }
+      case None => { index = close + 1 }
+    }
+  }
+  pieces = pieces.push(Text.drop(template, literalStart))
+  Text.join(&pieces, "")
+}
+
+/// Resolve one placeholder without inspecting replacement text.
+fn argument[T, V](
+  name: Str, displayName: Str, path: Str, root: T, value: V,
+  arguments: &Array[(Str, fn(T, V) -> Str)], captured: &Array[(Str, Str)]
+) -> Option[Str] {
+  if name == "PropertyName" { return Some(displayName) }
+  if name == "PropertyPath" { return Some(path) }
+  if name == "PropertyValue" { return Some(value.toText()) }
+  for entry in *arguments {
+    if entry[0] == name { return Some(entry[1](root, value)) }
+  }
+  for entry in *captured {
+    if entry[0] == name { return Some(entry[1]) }
+  }
+  None
+}

@@ -1,0 +1,150 @@
+/** @Validation.Rules.Collection.Module — checks arrays and indexed elements */
+module PuduLangValidator.Rules.Collection
+
+import Std.List as List
+import PuduLangValidator.Result as Validation
+import PuduLangValidator.Rule as Rule
+import PuduLangValidator.Selection as Selection
+
+/// Require an array to contain an element.
+export fn notEmpty[T, V](builder: Rule.RuleBuilder[T, Array[V]]) -> Rule.RuleBuilder[T, Array[V]] {
+  Rule.withCode(Rule.withMessage(Rule.must(builder, |items: Array[V]| !items.isEmpty()),
+      "The collection must contain an item."), "NotEmpty")
+}
+
+/// Require an array to contain no elements.
+export fn empty[T, V](builder: Rule.RuleBuilder[T, Array[V]]) -> Rule.RuleBuilder[T, Array[V]] {
+  Rule.withCode(Rule.withMessage(Rule.must(builder, |items: Array[V]| items.isEmpty()),
+      "The collection must be empty."), "Empty")
+}
+
+/// Require an array count within inclusive bounds.
+export fn countBetween[T, V](builder: Rule.RuleBuilder[T, Array[V]], low: Int, high: Int) -> Rule.RuleBuilder[T, Array[V]] {
+  let checked = Rule.withCode(Rule.withMessage(Rule.must(builder, |items: Array[V]| items.length() >= low && items.length() <= high),
+      "The collection must contain from \{From\} through \{To\} items."), "CountBetween")
+  let bounded = Rule.withArgument(Rule.withArgument(checked, "From", show(low)), "To", show(high))
+  Rule.withArgumentFrom(bounded, "TotalCount", fn(_root: T, items: Array[V]) -> Str { show(items.length()) })
+}
+
+/// Apply one element predicate at every original array index.
+export fn forEach[T, V](name: Str, select: fn(T) -> Array[V], test: fn(V) -> Bool, message: Str) -> Rule.Rule[T] {
+  forEachWhere(name, select, fn(_item: V) -> Bool { true }, test, message)
+}
+
+/// Apply one element predicate where the filter admits the item.
+export fn forEachWhere[T, V](
+  name: Str, select: fn(T) -> Array[V], keep: fn(V) -> Bool,
+  test: fn(V) -> Bool, message: Str
+) -> Rule.Rule[T] {
+  forEachWhereIndexed(name, select, keep, test, message,
+    fn(index: Int, _item: V) -> Str { show(index) })
+}
+
+/// Name each failing element with a caller-supplied index key.
+export fn forEachWhereIndexed[T, V](
+  name: Str, select: fn(T) -> Array[V], keep: fn(V) -> Bool,
+  test: fn(V) -> Bool, message: Str, indexer: fn(Int, V) -> Str
+) -> Rule.Rule[T] {
+  Rule.Rule{name: name, ruleSets: [], run: fn(root: T, _sets: Array[Str], _defaults: Bool, properties: Array[Str], _data: Rule.ContextData) -> Array[Validation.Failure] {
+      let items = select(root)
+      var failures: Array[Validation.Failure] = []
+      var index = 0
+      for item in items {
+        let path = name + "[" + indexer(index, item) + "]"
+        if pathSelected(path, &properties) && keep(item) && !test(item) {
+          let rendered = message.replace("\{CollectionIndex\}", show(index))
+            .replace("\{PropertyPath\}", path)
+            .replace("\{PropertyName\}", name)
+          failures = failures.push(Validation.Failure {
+              propertyName: path, errorMessage: rendered, errorCode: "ForEach",
+              severity: Validation.Error, customState: ""
+            })
+        }
+        index = index + 1
+      }
+      failures
+    } }
+}
+
+/** @Validation.Rules.Collection.ElementBuilder — chains checks per source element */
+export type ElementBuilder[T, V] = {
+  name: Str,
+  select: fn(T) -> Array[V],
+  keep: fn(V) -> Bool,
+  indexer: fn(Int, V) -> Str,
+  checks: Rule.RuleBuilder[(T, V), V]
+}
+
+/// Start an element rule with a typed array selector.
+export fn ruleForEach[T, V](name: Str, select: fn(T) -> Array[V]) -> ElementBuilder[T, V] {
+  let checks: Rule.RuleBuilder[(T, V), V] = Rule.ruleFor(name, |pair: (T, V)| pair[1])
+  ElementBuilder {
+    name: name, select: select,
+    keep: fn(_item: V) -> Bool { true },
+    indexer: fn(index: Int, _item: V) -> Str { show(index) },
+    checks: checks
+  }
+}
+
+/// Add one predicate to each selected element's chain.
+export fn must[T, V](builder: ElementBuilder[T, V], test: fn(V) -> Bool) -> ElementBuilder[T, V] {
+  ElementBuilder{..builder, checks: Rule.must(builder.checks, test)}
+}
+
+/// Set the latest element check's message.
+export fn withMessage[T, V](builder: ElementBuilder[T, V], message: Str) -> ElementBuilder[T, V] {
+  ElementBuilder{..builder, checks: Rule.withMessage(builder.checks, message)}
+}
+
+/// Set the latest element check's stable code.
+export fn withCode[T, V](builder: ElementBuilder[T, V], code: Str) -> ElementBuilder[T, V] {
+  ElementBuilder{..builder, checks: Rule.withCode(builder.checks, code)}
+}
+
+/// Retain source indices while skipping elements outside the filter.
+export fn whereItems[T, V](builder: ElementBuilder[T, V], keep: fn(V) -> Bool) -> ElementBuilder[T, V] {
+  ElementBuilder{..builder, keep: keep}
+}
+
+/// Render a caller-supplied bracket key for each failure path.
+export fn withIndex[T, V](builder: ElementBuilder[T, V], indexer: fn(Int, V) -> Str) -> ElementBuilder[T, V] {
+  ElementBuilder{..builder, indexer: indexer}
+}
+
+/// Stop each element's chain at its first failure.
+export fn stopOnFirst[T, V](builder: ElementBuilder[T, V]) -> ElementBuilder[T, V] {
+  ElementBuilder{..builder, checks: Rule.stopOnFirst(builder.checks)}
+}
+
+/// Tag this element rule with a named rule set.
+export fn inRuleSet[T, V](builder: ElementBuilder[T, V], name: Str) -> ElementBuilder[T, V] {
+  ElementBuilder{..builder, checks: Rule.inRuleSet(builder.checks, name)}
+}
+
+/// Freeze an element chain as an indexed source rule.
+export fn buildEach[T, V](builder: ElementBuilder[T, V]) -> Rule.Rule[T] {
+  let name = builder.name
+  let sets = builder.checks.ruleSets
+  Rule.Rule{name: name, ruleSets: sets, run: fn(root: T, selected: Array[Str], includeDefault: Bool, properties: Array[Str], data: Rule.ContextData) -> Array[Validation.Failure] {
+      var failures: Array[Validation.Failure] = []
+      var index = 0
+      for item in builder.select(root) {
+        let path = name + "[" + builder.indexer(index, item) + "]"
+        if pathSelected(path, &properties) && builder.keep(item) {
+          let itemRule = Rule.build(Rule.overridePropertyName(builder.checks, path))
+          for failure in itemRule.run((root, item), selected, includeDefault, properties, data) {
+            failures = failures.push(Validation.Failure {
+                ..failure, errorMessage: failure.errorMessage.replace("\{CollectionIndex\}", show(index))
+              })
+          }
+        }
+        index = index + 1
+      }
+      failures
+    } }
+}
+
+/// Whether a selected property reaches this source element.
+fn pathSelected(path: Str, properties: &Array[Str]) -> Bool {
+  properties.isEmpty() || List.any(properties, |wanted: Str| Selection.covers(wanted, path))
+}

@@ -1,0 +1,95 @@
+/** @Validation.Rules.Ordering.Module — checks ordered property bounds */
+module PuduLangValidator.Rules.Ordering
+
+import Std.Order {Ord}
+import PuduLangValidator.Rule as Rule
+
+/// Require a property strictly after the bound.
+export fn greaterThan[T, V: Ord](builder: Rule.RuleBuilder[T, V], bound: V) -> Rule.RuleBuilder[T, V] {
+  Rule.withArgument(Rule.withCode(Rule.withMessage(Rule.must(builder, |value: V| bound.before(&value)),
+        "Value must be greater than \{ComparisonValue\}."), "GreaterThan"), "ComparisonValue", bound.toText())
+}
+
+/// Require a property at or after the bound.
+export fn greaterThanOrEqualTo[T, V: Ord](builder: Rule.RuleBuilder[T, V], bound: V) -> Rule.RuleBuilder[T, V] {
+  Rule.withArgument(Rule.withCode(Rule.withMessage(Rule.must(builder, |value: V| !value.before(&bound)),
+        "Value must be at least \{ComparisonValue\}."), "GreaterThanOrEqualTo"), "ComparisonValue", bound.toText())
+}
+
+/// Require a property strictly before the bound.
+export fn lessThan[T, V: Ord](builder: Rule.RuleBuilder[T, V], bound: V) -> Rule.RuleBuilder[T, V] {
+  Rule.withArgument(Rule.withCode(Rule.withMessage(Rule.must(builder, |value: V| value.before(&bound)),
+        "Value must be less than \{ComparisonValue\}."), "LessThan"), "ComparisonValue", bound.toText())
+}
+
+/// Require a property at or before the bound.
+export fn lessThanOrEqualTo[T, V: Ord](builder: Rule.RuleBuilder[T, V], bound: V) -> Rule.RuleBuilder[T, V] {
+  Rule.withArgument(Rule.withCode(Rule.withMessage(Rule.must(builder, |value: V| !bound.before(&value)),
+        "Value must be at most \{ComparisonValue\}."), "LessThanOrEqualTo"), "ComparisonValue", bound.toText())
+}
+
+/// Require a property strictly after another selected property.
+export fn greaterThanProperty[T, V: Ord](
+  builder: Rule.RuleBuilder[T, V], path: Str, select: fn(T) -> V
+) -> Rule.RuleBuilder[T, V] {
+  let checked = Rule.withCode(Rule.withMessage(Rule.mustWithArguments(builder,
+        fn(root: T, value: V) -> Option[Array[(Str, Str)]] {
+          let bound = select(root)
+          if bound.before(&value) { None } else { Some([("ComparisonValue", bound.toText())]) }
+        }),
+      "Value must be greater than \{ComparisonValue\} from \{ComparisonProperty\}."), "GreaterThan")
+  Rule.withArgument(checked, "ComparisonProperty", path)
+}
+
+/// Require a property at or after another selected property.
+export fn greaterThanOrEqualToProperty[T, V: Ord](
+  builder: Rule.RuleBuilder[T, V], path: Str, select: fn(T) -> V
+) -> Rule.RuleBuilder[T, V] {
+  let checked = Rule.withCode(Rule.withMessage(Rule.mustWithArguments(builder,
+        fn(root: T, value: V) -> Option[Array[(Str, Str)]] {
+          let bound = select(root)
+          if !value.before(&bound) { None } else { Some([("ComparisonValue", bound.toText())]) }
+        }),
+      "Value must be at least \{ComparisonValue\} from \{ComparisonProperty\}."), "GreaterThanOrEqualTo")
+  Rule.withArgument(checked, "ComparisonProperty", path)
+}
+
+/// Require a property strictly before another selected property.
+export fn lessThanProperty[T, V: Ord](
+  builder: Rule.RuleBuilder[T, V], path: Str, select: fn(T) -> V
+) -> Rule.RuleBuilder[T, V] {
+  let checked = Rule.withCode(Rule.withMessage(Rule.mustWithArguments(builder,
+        fn(root: T, value: V) -> Option[Array[(Str, Str)]] {
+          let bound = select(root)
+          if value.before(&bound) { None } else { Some([("ComparisonValue", bound.toText())]) }
+        }),
+      "Value must be less than \{ComparisonValue\} from \{ComparisonProperty\}."), "LessThan")
+  Rule.withArgument(checked, "ComparisonProperty", path)
+}
+
+/// Require a property at or before another selected property.
+export fn lessThanOrEqualToProperty[T, V: Ord](
+  builder: Rule.RuleBuilder[T, V], path: Str, select: fn(T) -> V
+) -> Rule.RuleBuilder[T, V] {
+  let checked = Rule.withCode(Rule.withMessage(Rule.mustWithArguments(builder,
+        fn(root: T, value: V) -> Option[Array[(Str, Str)]] {
+          let bound = select(root)
+          if !bound.before(&value) { None } else { Some([("ComparisonValue", bound.toText())]) }
+        }),
+      "Value must be at most \{ComparisonValue\} from \{ComparisonProperty\}."), "LessThanOrEqualTo")
+  Rule.withArgument(checked, "ComparisonProperty", path)
+}
+
+/// Require a property from low through high, including endpoints.
+export fn inclusiveBetween[T, V: Ord](builder: Rule.RuleBuilder[T, V], low: V, high: V) -> Rule.RuleBuilder[T, V] {
+  let checked = Rule.withCode(Rule.withMessage(Rule.must(builder, |value: V| !value.before(&low) && !high.before(&value)),
+      "Value must be from \{From\} through \{To\}."), "InclusiveBetween")
+  Rule.withArgument(Rule.withArgument(checked, "From", low.toText()), "To", high.toText())
+}
+
+/// Require a property strictly between low and high.
+export fn exclusiveBetween[T, V: Ord](builder: Rule.RuleBuilder[T, V], low: V, high: V) -> Rule.RuleBuilder[T, V] {
+  let checked = Rule.withCode(Rule.withMessage(Rule.must(builder, |value: V| low.before(&value) && value.before(&high)),
+      "Value must be strictly between \{From\} and \{To\}."), "ExclusiveBetween")
+  Rule.withArgument(Rule.withArgument(checked, "From", low.toText()), "To", high.toText())
+}

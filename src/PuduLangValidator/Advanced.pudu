@@ -1,0 +1,44 @@
+/** @Validation.Advanced.Control — composes custom and dependent rules */
+module PuduLangValidator.Advanced
+
+import PuduLangValidator.Result as Validation
+import PuduLangValidator.Rule as Rule
+
+/// Use application code to report zero or more structured failures.
+export fn custom[T](name: Str, check: fn(T) -> Array[Validation.Failure]) -> Rule.Rule[T] {
+  customWithContext(name, fn(root: T, _data: Rule.ContextData) -> Array[Validation.Failure] { check(root) })
+}
+
+/// Use immutable context data to report structured failures.
+export fn customWithContext[T](
+  name: Str, check: fn(T, Rule.ContextData) -> Array[Validation.Failure]
+) -> Rule.Rule[T] {
+  Rule.Rule{name: name, ruleSets: [], run: fn(root: T, _sets: Array[Str], _defaults: Bool, _properties: Array[Str], data: Rule.ContextData) -> Array[Validation.Failure] {
+      check(root, data)
+    } }
+}
+
+/// Run a dependent rule only after its prerequisite succeeds.
+export fn dependent[T](primary: Rule.Rule[T], next: Rule.Rule[T]) -> Rule.Rule[T] {
+  let name = primary.name
+  let sets = primary.ruleSets
+  Rule.Rule{name: name, ruleSets: sets, run: fn(root: T, selected: Array[Str], includeDefault: Bool, properties: Array[Str], data: Rule.ContextData) -> Array[Validation.Failure] {
+      let first = primary.run(root, selected, includeDefault, properties, data)
+      if !first.isEmpty() { return first }
+      next.run(root, selected, includeDefault, properties, data)
+    } }
+}
+
+/// Run a built rule only when its source condition holds.
+export fn when[T](rule: Rule.Rule[T], condition: fn(T) -> Bool) -> Rule.Rule[T] {
+  let name = rule.name
+  let sets = rule.ruleSets
+  Rule.Rule{name: name, ruleSets: sets, run: fn(root: T, selected: Array[Str], includeDefault: Bool, properties: Array[Str], data: Rule.ContextData) -> Array[Validation.Failure] {
+      if condition(root) { rule.run(root, selected, includeDefault, properties, data) } else { [] }
+    } }
+}
+
+/// Skip a built rule when its source condition holds.
+export fn unless[T](rule: Rule.Rule[T], condition: fn(T) -> Bool) -> Rule.Rule[T] {
+  when(rule, fn(root: T) -> Bool { !condition(root) })
+}

@@ -1,0 +1,37 @@
+/** @Test.Validation.Composition.Suite — checks conditions and nested paths */
+module PuduLangValidator.CompositionTest
+
+import Std.Test as Test
+import PuduLangValidator.Result as Validation
+import PuduLangValidator.Rule as Rule
+import PuduLangValidator.Rules.Child as ChildRule
+import PuduLangValidator.Rules.Text as TextRule
+import PuduLangValidator.Validator as Validator
+
+type Address = { city: Str }
+type Customer = { name: Str, active: Bool, address: Option[Address] }
+
+fn addressValidator() -> Validator.Validator[Address] {
+  let city = Rule.build(TextRule.notEmpty(Rule.ruleFor("city", |address: Address| address.city)))
+  Validator.add(Validator.create(), city)
+}
+
+fn customerValidator() -> Validator.Validator[Customer] {
+  let name = Rule.build(Rule.when(TextRule.notEmpty(Rule.ruleFor("name", |person: Customer| person.name)),
+      |person: Customer| person.active))
+  let nested = ChildRule.setOptionalValidator("address", |person: Customer| person.address, addressValidator())
+  Validator.add(Validator.add(Validator.create(), name), nested)
+}
+
+fn main() -> Int {
+  let validator = customerValidator()
+  let skipped = Validator.validate(&validator, Customer{name: "", active: false, address: None})
+  let failed = Validator.validate(&validator, Customer{name: "", active: true, address: Some(Address{city: ""})})
+  let checks = Test.suite("Composition", &[
+      Test.equals("false condition skips a rule", &skipped.isValid, &true),
+      Test.equals("nested failure keeps parent path", &failed.errors.map(|failure: Validation.Failure| failure.propertyName),
+          &["name", "address.city"]),
+      Test.equals("nested rule preserves order", &failed.errors.length(), &2)
+    ])
+  Test.report(&Test.run(&checks))
+}

@@ -1,0 +1,19 @@
+# Vault Changelog
+
+- 2026-09-26 — Establish the typed rule engine contract, package boundary, and source mirrors.
+- 2026-09-26 — Add built-in, nested, asynchronous, localized, and result-query APIs.
+- 2026-09-27 — Resolve rule-set selection, context propagation, async metadata, and collection filtering against behavior tests.
+- 2026-09-27 — Render built-in bounds and keep nested selection from running parent scalar checks.
+- 2026-09-27 — Extend asynchronous rules with immutable root context and scalar path selection.
+- 2026-09-27 — Add nested asynchronous composition and awaited conditions.
+- 2026-09-27 — Unify concrete and wildcard property path selection across root and nested rules.
+- 2026-09-27 — Add failure message arguments to typed checks and built-in bounds.
+- 2026-09-27 — Add source-dependent severity and state to sync and async failures.
+- 2026-09-27 — Add composable result assertions and test validation entry points.
+- 2026-09-27 — Add typed cross-property equality and ordering checks.
+- 2026-09-27 — Reserve the decimal integer digit budget independently of observed fractional scale.
+- 2026-09-28 — Expose the configured regex pattern to failure messages.
+- 2026-09-28 — Add early synchronous and awaited prevalidation to async validators.
+- 2026-09-28 — Rewrite the package README around a checked example and stable API areas.
+- 2026-09-28 — Repair CI workflow parsing so checks run before release.
+- 2026-09-28 — Release 0.1.0 from `dev` to `main`.

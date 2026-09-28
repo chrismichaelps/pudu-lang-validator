@@ -1,0 +1,47 @@
+/** @Test.Validation.Collection.Suite — checks element chains and indices */
+module PuduLangValidator.CollectionTest
+
+import Std.Test as Test
+import PuduLangValidator.Result as Validation
+import PuduLangValidator.Rules.Collection as Collection
+import PuduLangValidator.Validator as Validator
+
+type Basket = { lines: Array[Str] }
+
+fn elementValidator() -> Validator.Validator[Basket] {
+  let first = Collection.withMessage(Collection.must(
+      Collection.ruleForEach("lines", |basket: Basket| basket.lines),
+      |line: Str| !line.isEmpty()
+    ), "Line \{CollectionIndex\} is empty.")
+  let second = Collection.withMessage(Collection.must(first,
+      |line: Str| line.length() >= 3), "Line \{CollectionIndex\} is short.")
+  Validator.add(Validator.create(), Collection.buildEach(Collection.stopOnFirst(second)))
+}
+
+fn filteredValidator() -> Validator.Validator[Basket] {
+  let base = Collection.ruleForEach("lines", |basket: Basket| basket.lines)
+  let filtered = Collection.whereItems(base, |line: Str| line != "skip")
+  let indexed = Collection.withIndex(filtered, |index: Int, _line: Str| "at-" + show(index))
+  let checked = Collection.withMessage(Collection.must(indexed, |line: Str| line.length() > 3),
+    "Bad line at \{CollectionIndex\}: \{PropertyPath\}.")
+  Validator.add(Validator.create(), Collection.buildEach(checked))
+}
+
+fn main() -> Int {
+  let elements = elementValidator()
+  let filtered = filteredValidator()
+  let failures = Validator.validate(&elements, Basket{lines: ["", "ok", "long"]})
+  let filteredFailures = Validator.validate(&filtered, Basket{lines: ["skip", "bad", "skip", "x"]})
+  let checks = Test.suite("Collection", &[
+      Test.equals("one failure per stopped element", &failures.errors.length(), &2),
+      Test.equals("chain paths use source indices", &failures.errors.map(|error: Validation.Failure| error.propertyName),
+          &["lines[0]", "lines[1]"]),
+      Test.equals("collection placeholder uses source index", &failures.errors[1].errorMessage,
+          &"Line 1 is short."),
+      Test.equals("filter retains original indices", &filteredFailures.errors.map(|error: Validation.Failure| error.propertyName),
+          &["lines[at-1]", "lines[at-3]"]),
+      Test.equals("custom index and numeric placeholder differ", &filteredFailures.errors[0].errorMessage,
+          &"Bad line at 1: lines[at-1].")
+    ])
+  Test.report(&Test.run(&checks))
+}

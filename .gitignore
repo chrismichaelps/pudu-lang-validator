@@ -1,0 +1,13 @@
+.pudu/
+deps/
+*.o
+*.swp
+.DS_Store
+
+# Private local project inputs.
+fmcf.md
+goal.md
+lang_proposal.md
+
+# Local API research notes.
+docs/

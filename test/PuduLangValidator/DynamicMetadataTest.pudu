@@ -1,0 +1,80 @@
+/** @Test.Validation.DynamicMetadata.Suite — checks source-derived failure fields */
+module PuduLangValidator.DynamicMetadataTest
+
+import Std.Test as Test
+import PuduLangValidator.Async as Async
+import PuduLangValidator.Result as Validation
+import PuduLangValidator.Rule as Rule
+import PuduLangValidator.Validator as Validator
+
+type Model = { name: Str, priority: Int }
+
+fn syncRule() -> Rule.RuleBuilder[Model, Str] {
+  let checked = Rule.must(Rule.ruleFor("name", |model: Model| model.name),
+    |value: Str| value == "ok")
+  let severity = Rule.withSeverityFrom(checked, fn(root: Model, _value: Str) -> Validation.Severity {
+      if root.priority > 1 { Validation.Warning } else { Validation.Info }
+    })
+  Rule.withStateFrom(severity, fn(root: Model, value: Str) -> Str {
+      value + ":" + show(root.priority)
+    })
+}
+
+async fn matches(_root: Model, value: Str) -> Bool { value == "ok" }
+
+fn asyncRule() -> Async.AsyncRule[Model] {
+  let checked = Async.mustAsync("name", |model: Model| model.name, matches,
+    "Name failed.", "Name")
+  let severity = Async.withSeverityFrom(checked, fn(root: Model) -> Validation.Severity {
+      if root.priority > 1 { Validation.Warning } else { Validation.Info }
+    })
+  Async.withStateFrom(severity, fn(root: Model) -> Str { root.name + ":" + show(root.priority) })
+}
+
+async fn main() -> Int {
+  let bad = Model{name: "bad", priority: 2}
+  let good = Model{name: "ok", priority: 2}
+  let sync = Validator.add(Validator.create(), Rule.build(syncRule()))
+  let syncBad = Validator.validate(&sync, bad)
+  let syncGood = Validator.validate(&sync, good)
+  let staticLast = Rule.withState(Rule.withSeverity(syncRule(), Validation.Error), "fixed")
+  let staticResult = Validator.validate(&Validator.add(Validator.create(), Rule.build(staticLast)), bad)
+  let dynamicLast = Rule.withStateFrom(Rule.withSeverityFrom(
+      Rule.withState(Rule.withSeverity(Rule.must(Rule.ruleFor("name", |model: Model| model.name),
+            |_value: Str| false), Validation.Error), "fixed"),
+      fn(_root: Model, _value: Str) -> Validation.Severity { Validation.Info }),
+    fn(root: Model, _value: Str) -> Str { show(root.priority) })
+  let dynamicResult = Validator.validate(&Validator.add(Validator.create(), Rule.build(dynamicLast)), bad)
+  let awaited = Async.add(Async.create(), asyncRule())
+  let asyncBad = Async.validateAsync(&awaited, bad).await
+  let asyncGood = Async.validateAsync(&awaited, good).await
+  let asyncStatic = Async.add(Async.create(),
+    Async.withState(Async.withSeverity(asyncRule(), Validation.Error), "fixed"))
+  let asyncStaticResult = Async.validateAsync(&asyncStatic, bad).await
+  let overridden = Async.withState(Async.withSeverity(
+      Async.withStateFrom(Async.withSeverityFrom(asyncRule(),
+          fn(_root: Model) -> Validation.Severity { panic("overridden severity ran") }),
+        fn(_root: Model) -> Str { panic("overridden state ran") }),
+      Validation.Error), "fixed")
+  let overriddenResult = Async.validateAsync(&Async.add(Async.create(), overridden), bad).await
+  let skippedFactory = Async.withSeverityFrom(asyncRule(),
+    fn(_root: Model) -> Validation.Severity { panic("successful rule computed severity") })
+  let skippedResult = Async.validateAsync(&Async.add(Async.create(), skippedFactory), good).await
+  let checks = Test.suite("DynamicMetadata", &[
+      Test.equals("sync severity comes from root", &syncBad.errors[0].severity, &Validation.Warning),
+      Test.equals("sync state sees root and property", &syncBad.errors[0].customState, &"bad:2"),
+      Test.equals("successful sync check has no failure", &syncGood.errors.length(), &0),
+      Test.equals("later static severity wins", &staticResult.errors[0].severity, &Validation.Error),
+      Test.equals("later static state wins", &staticResult.errors[0].customState, &"fixed"),
+      Test.equals("later computed severity wins", &dynamicResult.errors[0].severity, &Validation.Info),
+      Test.equals("later computed state wins", &dynamicResult.errors[0].customState, &"2"),
+      Test.equals("async severity comes from root", &asyncBad.errors[0].severity, &Validation.Warning),
+      Test.equals("async state comes from root", &asyncBad.errors[0].customState, &"bad:2"),
+      Test.equals("successful async check has no failure", &asyncGood.errors.length(), &0),
+      Test.equals("outer static async severity wins", &asyncStaticResult.errors[0].severity, &Validation.Error),
+      Test.equals("outer static async state wins", &asyncStaticResult.errors[0].customState, &"fixed"),
+      Test.equals("overridden async callbacks are not run", &overriddenResult.errors[0].customState, &"fixed"),
+      Test.equals("successful async rules skip metadata callbacks", &skippedResult.errors.length(), &0)
+    ])
+  Test.report(&Test.run(&checks))
+}

@@ -1,0 +1,85 @@
+/** @Test.Validation.AsyncChild.Suite — checks nested awaited validation */
+module PuduLangValidator.AsyncChildTest
+
+import Std.Json as Json
+import Std.Map as Map
+import Std.Test as Test
+import PuduLangValidator.Async as Async
+import PuduLangValidator.Result as Validation
+import PuduLangValidator.Rule as Rule
+import PuduLangValidator.Validator as Validator
+
+type Child = { code: Str, city: Str }
+type Root = { child: Child, optional: Option[Child], items: Array[Child], enabled: Bool }
+
+async fn validCode(_root: Child, code: Str, data: Rule.ContextData) -> Bool {
+  match Map.get(&data, "expected") {
+    case Some(Json.Text(expected)) => code == expected
+    case _ => false
+  }
+}
+
+fn childRules() -> Async.AsyncValidator[Child] {
+  let code = Async.mustAsyncWithContext("code", |child: Child| child.code,
+    validCode, "Code differs from context.", "Code")
+  let city = Async.inRuleSet(Async.mustAsync("city", |child: Child| child.city,
+      async fn(_root: Child, value: Str) -> Bool { !value.isEmpty() },
+      "City is required.", "City"), "shipping")
+  Async.add(Async.add(Async.create(), code), city)
+}
+
+fn rootRules() -> Async.AsyncValidator[Root] {
+  let child = childRules()
+  let direct = Async.setValidatorAsync("child", |root: Root| root.child, child)
+  let optional = Async.setOptionalValidatorAsync("optional", |root: Root| root.optional, childRules())
+  let items = Async.forEachValidatorAsync("items", |root: Root| root.items, childRules())
+  Async.add(Async.add(Async.add(Async.create(), direct), optional), items)
+}
+
+async fn main() -> Int {
+  let validator = rootRules()
+  let data: Rule.ContextData = mapOf([("expected", Json.Text("ok"))])
+  let root = Root {
+    child: Child{code: "bad", city: ""}, optional: None,
+    items: [Child{code: "bad", city: ""}, Child{code: "bad", city: ""}], enabled: false
+  }
+  let defaultResult = Async.validateAsyncWithData(&validator, root, Validator.defaults(), data).await
+  let selected = Async.validateAsyncWithData(&validator, root,
+    Validator.includeProperties(Validator.defaults(), ["items[1].code"]), data).await
+  let allCodes = Async.validateAsyncWithData(&validator, root,
+    Validator.includeProperties(Validator.defaults(), ["items[].code"]), data).await
+  let dotted = Async.add(Async.create(),
+    Async.forEachValidatorAsync("group.items", |value: Root| value.items, childRules()))
+  let parentSelected = Async.validateAsyncWithData(&dotted, root,
+    Validator.includeProperties(Validator.defaults(), ["group"]), data).await
+  let shipping = Async.validateAsyncWithData(&validator, root,
+    Validator.onlyRuleSets(["shipping"]), data).await
+  let present = Root{..root, optional: Some(Child{code: "bad", city: ""})}
+  let optionalResult = Async.validateAsyncWithData(&validator, present,
+    Validator.includeProperties(Validator.defaults(), ["optional.code"]), data).await
+  let custom = Async.customAsync("root", async fn(_root: Root, _data: Rule.ContextData) -> Array[Validation.Failure] {
+      [Validation.Failure{propertyName: "root", errorMessage: "Root failed.", errorCode: "Root",
+          severity: Validation.Error, customState: "" }]
+    })
+  let conditional = Async.whenAsync(custom, async fn(value: Root, _data: Rule.ContextData) -> Bool { value.enabled })
+  let conditionalValidator = Async.add(Async.create(), conditional)
+  let skipped = Async.validateAsyncWithData(&conditionalValidator, root, Validator.defaults(), data).await
+  let allowed = Async.validateAsyncWithData(&conditionalValidator, Root{..root, enabled: true},
+    Validator.defaults(), data).await
+  let checks = Test.suite("AsyncChild", &[
+      Test.equals("child failures keep source order", &defaultResult.errors.map(|failure: Validation.Failure| failure.propertyName),
+          &["child.code", "items[0].code", "items[1].code"]),
+      Test.equals("one indexed property reaches one child", &selected.errors.map(|failure: Validation.Failure| failure.propertyName),
+          &["items[1].code"]),
+      Test.equals("empty index selects each async child field", &allCodes.errors.map(|failure: Validation.Failure| failure.propertyName),
+          &["items[0].code", "items[1].code"]),
+      Test.equals("parent selection reaches dotted collection", &parentSelected.errors.map(|failure: Validation.Failure| failure.propertyName),
+          &["group.items[0].code", "group.items[1].code"]),
+      Test.equals("named set reaches nested children", &shipping.errors.map(|failure: Validation.Failure| failure.propertyName),
+          &["child.city", "items[0].city", "items[1].city"]),
+      Test.equals("present optional child is awaited", &optionalResult.errors[0].propertyName, &"optional.code"),
+      Test.equals("false awaited condition skips custom check", &skipped.errors.length(), &0),
+      Test.equals("true awaited condition runs custom check", &allowed.errors[0].errorCode, &"Root")
+    ])
+  Test.report(&Test.run(&checks))
+}

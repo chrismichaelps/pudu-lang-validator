@@ -1,0 +1,83 @@
+/** @Test.Validation.AsyncPreflight.Suite — checks early awaited decisions */
+module PuduLangValidator.AsyncPreflightTest
+
+import Std.Json as Json
+import Std.Map as Map
+import Std.Test as Test
+import PuduLangValidator.Async as Async
+import PuduLangValidator.Result as Validation
+import PuduLangValidator.Rule as Rule
+import PuduLangValidator.Validator as Validator
+
+type Child = { code: Str }
+type Model = { child: Child }
+type CollectionModel = { children: Array[Child] }
+
+fn failure() -> Validation.Failure {
+  Validation.Failure{propertyName: "code", errorMessage: "Rejected before rules.",
+    errorCode: "Preflight", severity: Validation.Warning, customState: "early" }
+}
+
+async fn shouldNotRun(_root: Child, _value: Str) -> Bool { panic("rule ran after prevalidation") }
+
+async fn rejectsFromContext(
+  _root: Child, data: Rule.ContextData
+) -> Option[Array[Validation.Failure]] {
+  match Map.get(&data, "reject") {
+    case Some(Json.Text("yes")) => Some([failure()])
+    case _ => None
+  }
+}
+
+async fn main() -> Int {
+  let child = Child{code: ""}
+  let rule = Async.mustAsync("code", |value: Child| value.code, shouldNotRun, "Code failed.", "Code")
+  let earlySuccess = Async.withPreValidation(Async.add(Async.create(), rule),
+    fn(_root: Child) -> Option[Array[Validation.Failure]] { Some([]) })
+  let success = Async.validateAsync(&earlySuccess, child).await
+  let earlyFailure = Async.withPreValidation(Async.add(Async.create(), rule),
+    fn(_root: Child) -> Option[Array[Validation.Failure]] { Some([failure()]) })
+  let rejected = Async.validateAsync(&earlyFailure, child).await
+  let ordinary = Async.mustAsync("code", |value: Child| value.code,
+    async fn(_root: Child, _value: Str) -> Bool { false }, "Code failed.", "Code")
+  let contextOnly = Async.withPreValidationAsync(Async.add(Async.create(), ordinary), rejectsFromContext)
+  let data: Rule.ContextData = mapOf([("reject", Json.Text("yes"))])
+  let contextRejected = Async.validateAsyncWithData(&contextOnly, child, Validator.defaults(), data).await
+  let continued = Async.validateAsync(&contextOnly, child).await
+  let replaced = Async.withPreValidationAsync(
+    Async.withPreValidation(Async.create(), fn(_root: Child) -> Option[Array[Validation.Failure]] {
+        panic("replaced preflight ran")
+      }), rejectsFromContext)
+  let replacedResult = Async.validateAsync(&replaced, child).await
+  let parent = Async.add(Async.create(),
+    Async.setValidatorAsync("child", |model: Model| model.child, contextOnly))
+  let childResult = Async.validateAsyncWithData(&parent, Model{child: child}, Validator.defaults(), data).await
+  let excludedChild = Async.validateAsyncWithData(&parent, Model{child: child},
+    Validator.includeProperties(Validator.defaults(), ["other"]), data).await
+  let excludedSet = Async.validateAsyncWithData(&parent, Model{child: child},
+    Validator.onlyRuleSets(["other"]), data).await
+  let collection = Async.add(Async.create(),
+    Async.forEachValidatorAsync("children", |model: CollectionModel| model.children, contextOnly))
+  let selectedIndex = Async.validateAsyncWithData(&collection,
+    CollectionModel{children: [child, child]},
+    Validator.includeProperties(Validator.defaults(), ["children[1].code"]), data).await
+  let unselected = Async.validateAsyncWith(&earlyFailure, child,
+    Validator.includeProperties(Validator.defaults(), ["other"])).await
+  let checks = Test.suite("AsyncPreflight", &[
+      Test.that("empty early result is valid", success.isValid),
+      Test.equals("empty early result has no failures", &success.errors.length(), &0),
+      Test.equals("early failure skips rule", &rejected.errors[0].errorCode, &"Preflight"),
+      Test.equals("early metadata stays intact", &rejected.errors[0].customState, &"early"),
+      Test.equals("awaited preflight reads root context", &contextRejected.errors[0].errorCode, &"Preflight"),
+      Test.equals("none continues into ordinary rules", &continued.errors[0].errorCode, &"Code"),
+      Test.that("latest preflight replaces earlier callback", replacedResult.isValid),
+      Test.equals("preflight precedes property selection", &unselected.errors[0].errorCode, &"Preflight"),
+      Test.equals("child preflight path is prefixed", &childResult.errors[0].propertyName, &"child.code"),
+      Test.equals("child preflight severity is retained", &childResult.errors[0].severity, &Validation.Warning),
+      Test.that("unselected child skips preflight", excludedChild.isValid),
+      Test.that("excluded child rule set skips preflight", excludedSet.isValid),
+      Test.equals("selected collection index runs one child preflight",
+          &selectedIndex.errors.map(|error: Validation.Failure| error.propertyName), &["children[1].code"])
+    ])
+  Test.report(&Test.run(&checks))
+}
