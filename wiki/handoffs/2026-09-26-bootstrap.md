@@ -15,7 +15,7 @@ The bootstrap owns `src/PuduLangValidator/**`, `src/Main.pudu`, their mirrors, p
 
 ## Exact next action
 
-Add message arguments on issue #9, test bound metadata and per-check isolation, then review source parity before integration into `dev`.
+Audit assertion helpers against the current result API, then open a focused issue for the first missing behavior before editing its mirrored module page.
 
 ## Referenced by
 

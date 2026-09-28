@@ -11,6 +11,8 @@ path: src/PuduLangValidator/Rule.pudu
 
 `withArgument` and `withArgumentFrom` add named message values to the latest check. A repeated name replaces its earlier value. Argument factories receive the source and property only when that check fails.
 
+`withSeverityFrom` and `withStateFrom` compute metadata from the source and property for the latest check. Static setters clear an earlier callback; a later callback replaces an earlier static value.
+
 ## Algorithm and edge cases
 
 Scalar property selection uses [[Selection]] so empty bracket patterns match concrete indices without admitting a descendant-only request.
@@ -18,6 +20,8 @@ Scalar property selection uses [[Selection]] so empty bracket patterns match con
 Message arguments render alongside built-in property placeholders. A custom message may use named arguments supplied by its check; arguments on another check do not leak into it. Argument names representing built-in property placeholders are reserved.
 
 Rendering scans the chosen template once. Replacement text is appended literally and is not reparsed for more placeholders. An argument factory runs only if its name occurs in the chosen template.
+
+Metadata callbacks run only for emitted failures, after conditions and the predicate. Each check owns its own callbacks, so later checks cannot change earlier failures.
 
 Scalar property rules skip when selection targets only one of their descendants; child rules can still traverse to that path.
 
@@ -37,6 +41,7 @@ DEEP — carries the typed property boundary, ordered check semantics, and metad
 - **Q:** Should `when` affect all earlier checks? **A:** Yes; `whenCurrent` narrows it. **Rationale:** the two scopes must be explicit and testable. **Rejected:** silently treating `when` as current-only.
 - **Q:** If no check exists, does metadata error? **A:** Return the same builder. **Rationale:** preserves a total functional API. **Rejected:** panic.
 - **Q:** When are dynamic message arguments computed? **A:** Only after the attached check fails. **Rationale:** successful validation avoids formatting work. **Rejected:** eager argument evaluation.
+- **Q:** Which metadata setter wins? **A:** The latest static or computed setter on one check. **Rationale:** fluent updates have a predictable order. **Rejected:** combining conflicting severities or states.
 
 ## Referenced by
 
