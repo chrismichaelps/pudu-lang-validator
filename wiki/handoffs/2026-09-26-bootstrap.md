@@ -7,7 +7,7 @@ status: ACTIVE
 
 ## FMCF roles
 
-**DNA Engineer:** specified the Pudu rule model and resolved the issue #21 async mirror. **Shadow:** implements the declared modules and focused checks. **Forensic Guardian:** audits source parity, links, and changelog after validation.
+**DNA Engineer:** specified the Pudu rule model and package contracts. **Shadow:** maintains the README and focused checks. **Forensic Guardian:** audits source parity, links, and changelog after validation.
 
 ## Ownership
 
