@@ -31,11 +31,11 @@ jobs:
           echo "$RUNNER_TEMP/pudu-${PUDU_VERSION}-linux-amd64/bin" >> "$GITHUB_PATH"
       - run: pudu version
       - name: Check
-        run: pudu check $(find src test -name '*.pudu')
+        run: pudu check $(find src test tools -name '*.pudu')
       - name: Format
-        run: pudu fmt --check src test
+        run: pudu fmt --check src test tools
       - name: Lint
-        run: pudu lint src test
+        run: pudu lint src test tools
       - name: Test
         run: pudu test test
       - name: Build CLI
@@ -43,3 +43,23 @@ jobs:
       - name: Smoke CLI
         run: |
           "$RUNNER_TEMP/pudu-lang-validator" --version
+
+  mutation:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Pudu
+        run: |
+          set -euo pipefail
+          archive="pudu-${PUDU_VERSION}-linux-amd64.tar.gz"
+          base="https://github.com/chrismichaelps/pudu-lang/releases/download/v${PUDU_VERSION}"
+          cd "$RUNNER_TEMP"
+          curl -fsSLO "$base/$archive"
+          curl -fsSLO "$base/$archive.sha256"
+          sha256sum -c "$archive.sha256"
+          tar -xzf "$archive"
+          echo "$RUNNER_TEMP/pudu-${PUDU_VERSION}-linux-amd64/bin" >> "$GITHUB_PATH"
+      - name: Mutation testing on the pure predicate layer
+        run: pudu run tools/Mutate.pudu --domain --threshold 100

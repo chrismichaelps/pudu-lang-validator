@@ -66,6 +66,13 @@ async fn main() -> Int {
   let skipped = Async.validateAsyncWithData(&conditionalValidator, root, Validator.defaults(), data).await
   let allowed = Async.validateAsyncWithData(&conditionalValidator, Root{..root, enabled: true},
     Validator.defaults(), data).await
+  let namedChild = Async.add(Async.create(), Async.inRuleSet(Async.mustAsync("city", |child: Child| child.city,
+        async fn(_root: Child, value: Str) -> Bool { !value.isEmpty() },
+        "City is required.", "City"), "shipping"))
+  let namedParent = Async.add(Async.create(),
+    Async.setValidatorAsync("child", |root: Root| root.child, namedChild))
+  let namedDefault = Async.validateAsync(&namedParent,
+    Root{child: Child{code: "ok", city: ""}, optional: None, items: [], enabled: false}).await
   let checks = Test.suite("AsyncChild", &[
       Test.equals("child failures keep source order", &defaultResult.errors.map(|failure: Validation.Failure| failure.propertyName),
           &["child.code", "items[0].code", "items[1].code"]),
@@ -79,7 +86,8 @@ async fn main() -> Int {
           &["child.city", "items[0].city", "items[1].city"]),
       Test.equals("present optional child is awaited", &optionalResult.errors[0].propertyName, &"optional.code"),
       Test.equals("false awaited condition skips custom check", &skipped.errors.length(), &0),
-      Test.equals("true awaited condition runs custom check", &allowed.errors[0].errorCode, &"Root")
+      Test.equals("true awaited condition runs custom check", &allowed.errors[0].errorCode, &"Root"),
+      Test.equals("named-only child stays silent by default", &namedDefault.errors.length(), &0)
     ])
   Test.report(&Test.run(&checks))
 }

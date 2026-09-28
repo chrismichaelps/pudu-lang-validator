@@ -15,7 +15,10 @@ Length bounds are rendered into failure messages when a check fails.
 
 Length checks attach `MinLength`, `MaxLength`, and `TotalLength` message arguments as applicable, including when the caller supplies a custom message. Regex checks attach `RegularExpression` with the caller's original pattern text.
 
-Whitespace-only text is empty. Length counts Pudu Unicode scalar values. Bounds are inclusive. The email check requires one internal `@`; it does not claim deliverability. Card numbers permit digits with spaces and hyphens, require 12–19 digits, and pass a Luhn check; issuer or account status is outside scope. Enum names compare against an explicit list, optionally ignoring case. Regex matching uses `Std.Regex`; a budget exhaustion is a failed predicate.
+Whitespace-only text is empty. Length counts Pudu Unicode scalar values. Bounds are inclusive.
+An empty string satisfies any maximum; forbidding emptiness is `notEmpty` territory, not a maximum.
+Braces interpolate in Pudu string literals, so a pattern wanting a quantifier `{2}` is written
+with escaped braces; an unescaped brace never reaches the regex engine. The email check requires one internal `@`; it does not claim deliverability. Card numbers permit digits with spaces and hyphens, require 12–19 digits, and pass a Luhn check; issuer or account status is outside scope. Enum names compare against an explicit list, optionally ignoring case. Regex matching uses `Std.Regex`; a budget exhaustion is a failed predicate.
 
 ## Negative logic
 

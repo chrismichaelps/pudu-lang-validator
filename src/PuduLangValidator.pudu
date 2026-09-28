@@ -2,4 +2,4 @@
 module PuduLangValidator
 
 /// The version of this package.
-export fn version() -> Str { "0.1.0" }
+export fn version() -> Str { "0.1.1" }

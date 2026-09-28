@@ -22,7 +22,7 @@ path: src/PuduLangValidator/Async.pudu
 
 Async root and child rules use [[Selection]] for the same path relations as synchronous validation.
 
-Selection runs once for an async rule. A false predicate emits one failure with the supplied path, message, and code. Array checks and filters are awaited in source order and retain original indices; unselected indices are skipped. Rules are awaited sequentially so failure order matches declaration order. `stopOnFirst` ends after the first failing rule. A rule's awaited work is cold until validation begins.
+Selection runs once for an async rule. A false predicate emits one failure with the supplied path, message, and code. Array checks and filters are awaited in source order and retain original indices; unselected indices are skipped. `forEachAsync` checks every element with no keep-filter; element filtering is `forEachWhereAsync` territory. Rules are awaited sequentially so failure order matches declaration order. `stopOnFirst` ends after the first failing rule. A rule's awaited work is cold until validation begins.
 
 Prevalidation runs once before rule selection and awaits completion before any rule begins. An early result skips all rule work. When a parent selects a child rule, that child runs its own prevalidation with the inherited context; its returned failure paths are prefixed by the parent exactly like ordinary child failures. Unselected child rules do not invoke their children. The latest installed prevalidation callback replaces earlier callbacks.
 
@@ -49,6 +49,7 @@ MEDIUM — explicit task boundary with deterministic ordering.
 - **Q:** Should context be mutable during async validation? **A:** Pass an immutable map through the run boundary. **Rationale:** nested and lifted rules observe one consistent request context. **Rejected:** per-rule global state.
 - **Q:** How should nested async work retain order? **A:** Await each child and array element sequentially. **Rationale:** failure order remains tied to source order. **Rejected:** merge by completion time.
 - **Q:** Can async prevalidation return a valid result? **A:** Yes; `Some([])` stops validation with no failures. **Rationale:** early acceptance is an explicit application choice. **Rejected:** forcing a fabricated error to stop.
+- **Q:** How is the default set advertised for nested children? **A:** Collect named sets first, then append `default` once when any rule is unnamed. **Rationale:** the advertisement is order-free and each guard is observable. **Rejected:** a per-rule guard whose named-rule arm no nested run can observe.
 
 ## Referenced by
 

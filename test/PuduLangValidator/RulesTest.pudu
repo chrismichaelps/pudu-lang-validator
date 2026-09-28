@@ -25,11 +25,48 @@ fn optionalRule() -> Validator.Validator[Fields] {
   Validator.add(Validator.create(), rule)
 }
 
+fn maxLengthRule() -> Validator.Validator[Fields] {
+  let rule = Rule.build(TextRule.maximumLength(Rule.ruleFor("text", |item: Fields| item.text), 2))
+  Validator.add(Validator.create(), rule)
+}
+
+fn minLengthRule() -> Validator.Validator[Fields] {
+  let rule = Rule.build(TextRule.minimumLength(Rule.ruleFor("text", |item: Fields| item.text), 1))
+  Validator.add(Validator.create(), rule)
+}
+
+fn lengthRule() -> Validator.Validator[Fields] {
+  let rule = Rule.build(TextRule.length(Rule.ruleFor("text", |item: Fields| item.text), 2, 4))
+  Validator.add(Validator.create(), rule)
+}
+
+fn emailRule() -> Validator.Validator[Fields] {
+  let rule = Rule.build(TextRule.emailAddress(Rule.ruleFor("text", |item: Fields| item.text)))
+  Validator.add(Validator.create(), rule)
+}
+
+fn enumRule(caseSensitive: Bool) -> Validator.Validator[Fields] {
+  let rule = Rule.build(TextRule.enumName(Rule.ruleFor("text", |item: Fields| item.text), ["Ada", "Bo"], caseSensitive))
+  Validator.add(Validator.create(), rule)
+}
+
+fn cardRule() -> Validator.Validator[Fields] {
+  let rule = Rule.build(TextRule.creditCard(Rule.ruleFor("text", |item: Fields| item.text)))
+  Validator.add(Validator.create(), rule)
+}
+
 fn main() -> Int {
   let card = textRule()
   let strict = amountRule(false)
   let trimmed = amountRule(true)
   let optional = optionalRule()
+  let capped = maxLengthRule()
+  let floored = minLengthRule()
+  let bounded = lengthRule()
+  let email = emailRule()
+  let sensitive = enumRule(true)
+  let folded = enumRule(false)
+  let cardNumber = cardRule()
   let valid = Fields{text: "4111 1111 1111 1111", amount: 123.4500d, optional: Some("Ada")}
   let bad = Fields{text: "4111 1111 1111 1112", amount: 123.4500d, optional: None}
   let checks = Test.suite("Rules", &[
@@ -38,7 +75,32 @@ fn main() -> Int {
       Test.equals("precision counts trailing zeroes", &Validator.validate(&strict, valid).isValid, &false),
       Test.equals("precision can ignore trailing zeroes", &Validator.validate(&trimmed, valid).isValid, &true),
       Test.equals("optional text rejects absence", &Validator.validate(&optional, bad).isValid, &false),
-      Test.equals("optional text accepts content", &Validator.validate(&optional, valid).isValid, &true)
+      Test.equals("optional text accepts content", &Validator.validate(&optional, valid).isValid, &true),
+      Test.equals("maximum length accepts an empty string", &Validator.validate(&capped, Fields{text: "", amount: 1.00d, optional: None}).isValid, &true),
+      Test.equals("maximum length accepts the boundary", &Validator.validate(&capped, Fields{text: "ab", amount: 1.00d, optional: None}).isValid, &true),
+      Test.equals("maximum length rejects overlong text", &Validator.validate(&capped, Fields{text: "abc", amount: 1.00d, optional: None}).isValid, &false),
+      Test.equals("minimum length rejects an empty string", &Validator.validate(&floored, Fields{text: "", amount: 1.00d, optional: None}).isValid, &false),
+      Test.equals("minimum length accepts the boundary", &Validator.validate(&floored, Fields{text: "a", amount: 1.00d, optional: None}).isValid, &true),
+      Test.equals("length accepts both boundaries", &Validator.validate(&bounded, Fields{text: "ab", amount: 1.00d, optional: None}).isValid, &true),
+      Test.equals("length accepts the upper boundary", &Validator.validate(&bounded, Fields{text: "abcd", amount: 1.00d, optional: None}).isValid, &true),
+      Test.equals("length rejects below the minimum", &Validator.validate(&bounded, Fields{text: "a", amount: 1.00d, optional: None}).isValid, &false),
+      Test.equals("length rejects above the maximum", &Validator.validate(&bounded, Fields{text: "abcde", amount: 1.00d, optional: None}).isValid, &false),
+      Test.equals("email accepts one internal @", &Validator.validate(&email, Fields{text: "a@b", amount: 1.00d, optional: None}).isValid, &true),
+      Test.equals("email rejects a missing @", &Validator.validate(&email, Fields{text: "ab", amount: 1.00d, optional: None}).isValid, &false),
+      Test.equals("email rejects a leading @", &Validator.validate(&email, Fields{text: "@b", amount: 1.00d, optional: None}).isValid, &false),
+      Test.equals("email rejects a trailing @", &Validator.validate(&email, Fields{text: "a@", amount: 1.00d, optional: None}).isValid, &false),
+      Test.equals("email rejects a second @", &Validator.validate(&email, Fields{text: "a@b@c", amount: 1.00d, optional: None}).isValid, &false),
+      Test.equals("enum accepts an exact name", &Validator.validate(&sensitive, Fields{text: "Ada", amount: 1.00d, optional: None}).isValid, &true),
+      Test.equals("enum rejects a case mismatch when sensitive", &Validator.validate(&sensitive, Fields{text: "ada", amount: 1.00d, optional: None}).isValid, &false),
+      Test.equals("enum accepts a case mismatch when folded", &Validator.validate(&folded, Fields{text: "ada", amount: 1.00d, optional: None}).isValid, &true),
+      Test.equals("enum rejects an unknown name when folded", &Validator.validate(&folded, Fields{text: "Zed", amount: 1.00d, optional: None}).isValid, &false),
+      Test.equals("card rejects dots as separators", &Validator.validate(&cardNumber, Fields{text: "4111.1111.1111.1111", amount: 1.00d, optional: None}).isValid, &false),
+      Test.equals("card rejects a dot among zeroes", &Validator.validate(&cardNumber, Fields{text: ".000 0000 0000 0000", amount: 1.00d, optional: None}).isValid, &false),
+      Test.equals("card rejects letters", &Validator.validate(&cardNumber, Fields{text: "4111 1111 1111 111a", amount: 1.00d, optional: None}).isValid, &false),
+      Test.equals("card accepts zeroes", &Validator.validate(&cardNumber, Fields{text: "0000 0000 0000 0000", amount: 1.00d, optional: None}).isValid, &true),
+      Test.equals("card accepts twelve digits", &Validator.validate(&cardNumber, Fields{text: "5260 1815 9081", amount: 1.00d, optional: None}).isValid, &true),
+      Test.equals("card accepts nineteen digits", &Validator.validate(&cardNumber, Fields{text: "3016 6131 8609 1390 996", amount: 1.00d, optional: None}).isValid, &true),
+      Test.equals("card rejects a Luhn-passing short number", &Validator.validate(&cardNumber, Fields{text: "0", amount: 1.00d, optional: None}).isValid, &false)
     ])
   Test.report(&Test.run(&checks))
 }

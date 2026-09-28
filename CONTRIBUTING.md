@@ -17,14 +17,21 @@ Package modules live under `PuduLangValidator`. Keep every source file below 500
 ## Checks
 
 ```sh
-pudu check $(rg --files src test -g '*.pudu')
-pudu fmt --check src test
-pudu lint src test
+pudu check $(rg --files src test tools -g '*.pudu')
+pudu fmt --check src test tools
+pudu lint src test tools
 pudu test test
 pudu build src/Main.pudu -o /tmp/pudu-lang-validator
 ```
 
 Review success, failure, edge, and output cases for the changed behavior. Check the implementation against its mirror and record the logic change in `wiki/CHANGELOG.md`.
+
+Changes to predicates also run mutation testing on the files they touch, and no new mutant may survive
+without a written reason:
+
+```sh
+pudu run tools/Mutate.pudu --file src/PuduLangValidator/Rules/Text.pudu
+```
 
 ## Pull requests
 

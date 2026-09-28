@@ -17,6 +17,8 @@ async fn included(tag: Str) -> Bool { tag != "skip" }
 
 async fn longEnough(_root: Item, tag: Str) -> Bool { tag.length() >= 3 }
 
+async fn rejectsSkipAndShort(_root: Item, tag: Str) -> Bool { tag != "skip" && tag.length() >= 3 }
+
 async fn matchesContext(_root: Item, key: Str, data: Rule.ContextData) -> Bool {
   match Map.get(&data, "expected") {
     case Some(Json.Text(expected)) => key == expected
@@ -40,6 +42,14 @@ async fn main() -> Int {
   let selectedTags = Async.validateAsyncWith(&Async.add(Async.create(), tagsRule),
     Item{key: "present", count: 1, tags: ["x", "z"]},
     Validator.includeProperties(Validator.defaults(), ["tags[1]"])).await
+  let unfiltered = Async.forEachAsync("tags", |item: Item| item.tags, rejectsSkipAndShort,
+    "Tag \{CollectionIndex\} is short.", "TagLength")
+  let every = Async.validateAsync(&Async.add(Async.create(), unfiltered),
+    Item{key: "present", count: 1, tags: ["skip", "x", "longer"]}).await
+  let filtered = Async.forEachWhereAsync("tags", |item: Item| item.tags, included, rejectsSkipAndShort,
+    "Tag \{CollectionIndex\} is short.", "TagLength")
+  let kept = Async.validateAsync(&Async.add(Async.create(), filtered),
+    Item{key: "present", count: 1, tags: ["skip", "x", "longer"]}).await
   let named = Async.inRuleSet(Async.withSeverity(asyncRule, Validation.Warning), "lookup")
   let namedValidator = Async.add(Async.create(), named)
   let defaultNamed = Async.validateAsync(&namedValidator, Item{key: "absent", count: 0, tags: []}).await
@@ -81,6 +91,12 @@ async fn main() -> Int {
     }, "Tag differs from context.", "TagContext")
   let contextTagFailures = Async.validateAsyncWithData(&Async.add(Async.create(), contextTags),
     Item{key: "present", count: 0, tags: ["skip", "x", "long"]}, Validator.defaults(), tagData).await
+  let stopSecond = Async.mustAsync("other", |item: Item| item.key, keyExists,
+    "The other key was not found.", "MissingOther")
+  let flowing = Async.add(Async.add(Async.create(), asyncRule), stopSecond)
+  let stopped = Async.stopOnFirst(flowing)
+  let stoppedBad = Async.validateAsync(&stopped, Item{key: "absent", count: 1, tags: []}).await
+  let flowingBad = Async.validateAsync(&flowing, Item{key: "absent", count: 1, tags: []}).await
   let checks = Test.suite("Async", &[
       Test.equals("async and sync failures keep order", &bad.errors.map(|failure: Validation.Failure| failure.propertyName),
           &["key", "count"]),
@@ -95,7 +111,15 @@ async fn main() -> Int {
       Test.equals("lifted synchronous rule receives context", &liftedGood.isValid, &true),
       Test.equals("scalar async rule skips descendant selection", &descendantOnly.errors.length(), &0),
       Test.equals("async collection filter and check receive context", &contextTagFailures.errors.map(|failure: Validation.Failure| failure.propertyName),
-          &["tags[1]"])
+          &["tags[1]"]),
+      Test.equals("async forEach checks every element unfiltered", &every.errors.map(|failure: Validation.Failure| failure.propertyName),
+          &["tags[0]", "tags[1]"]),
+      Test.equals("async forEachWhere checks kept elements only", &kept.errors.map(|failure: Validation.Failure| failure.propertyName),
+          &["tags[1]"]),
+      Test.equals("async stopOnFirst keeps the first failure", &stoppedBad.errors.map(|failure: Validation.Failure| failure.propertyName),
+          &["key"]),
+      Test.equals("async rules flow without stopOnFirst", &flowingBad.errors.map(|failure: Validation.Failure| failure.propertyName),
+          &["key", "other"])
     ])
   Test.report(&Test.run(&checks))
 }
