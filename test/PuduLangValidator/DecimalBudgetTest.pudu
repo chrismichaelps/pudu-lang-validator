@@ -1,0 +1,42 @@
+/** @Test.Validation.DecimalBudget.Suite — checks reserved integer digits */
+module PuduLangValidator.DecimalBudgetTest
+
+import Std.Test as Test
+import PuduLangValidator.Result as Validation
+import PuduLangValidator.Rule as Rule
+import PuduLangValidator.Rules.Decimal as DecimalRule
+import PuduLangValidator.Validator as Validator
+
+type Model = { amount: Decimal }
+
+fn validate(amount: Decimal, precision: Int, scale: Int, ignoreZeros: Bool) -> Validation.ValidationResult {
+  let builder = DecimalRule.precisionScale(
+    Rule.ruleFor("amount", |item: Model| item.amount), precision, scale, ignoreZeros)
+  let validator = Validator.add(Validator.create(), Rule.build(builder))
+  Validator.validate(&validator, Model{amount: amount})
+}
+
+fn main() -> Int {
+  let named = Rule.withMessage(DecimalRule.precisionScale(
+      Rule.ruleFor("amount", |item: Model| item.amount), 3, 1, false),
+    "p=\{ExpectedPrecision\} s=\{ExpectedScale\} d=\{Digits\} a=\{ActualScale\}")
+  let namedResult = Validator.validate(&Validator.add(Validator.create(), Rule.build(named)),
+    Model{amount: 100d})
+  let checks = Test.suite("DecimalBudget", &[
+      Test.that("two whole digits fit reserved scale", validate(99d, 3, 1, false).isValid),
+      Test.that("three whole digits exceed reserved scale", !validate(100d, 3, 1, false).isValid),
+      Test.that("negative boundary fits", validate(-99.9d, 3, 1, false).isValid),
+      Test.that("negative whole overflow fails", !validate(-100d, 3, 1, false).isValid),
+      Test.that("zero fits all fractional budget", validate(0d, 1, 1, false).isValid),
+      Test.that("exact fractional boundary fits", validate(9.99d, 4, 2, false).isValid),
+      Test.that("excess scale fails", !validate(9.999d, 4, 2, false).isValid),
+      Test.that("retained trailing zeroes fail strict scale", !validate(9.9900d, 4, 2, false).isValid),
+      Test.that("ignored trailing zeroes fit", validate(9.9900d, 4, 2, true).isValid),
+      Test.that("zero precision fails", !validate(0d, 0, 0, false).isValid),
+      Test.that("negative scale fails", !validate(1d, 3, -1, false).isValid),
+      Test.that("scale beyond precision fails", !validate(1d, 2, 3, false).isValid),
+      Test.equals("captured shape arguments match tested value", &namedResult.errors[0].errorMessage,
+          &"p=3 s=1 d=3 a=0")
+    ])
+  Test.report(&Test.run(&checks))
+}

@@ -75,6 +75,8 @@ Messages support `{PropertyName}`, `{PropertyPath}`, and `{PropertyValue}`. Buil
 
 `Comparison.equalToProperty` and `Ordering.greaterThanProperty` compare a selected value with another typed property on the same source. Their companion functions cover inequality and inclusive or exclusive ordering; each takes an explicit comparison path for failure messages.
 
+`Decimal.precisionScale` reserves `precision - scale` digits for the whole-number part, even when a value uses fewer fractional digits. Its trailing-zero flag controls whether fractional zeroes count toward the measured scale.
+
 `Testing.testValidate` and `Testing.testValidateAsync` run real validators for tests. Start a result query with `Testing.forProperty(&result, "name")`, narrow it with `Testing.withCode` or other metadata filters, then use `Testing.hasAny`, `Testing.hasNone`, or `Testing.only` with `Std.Test.that`.
 
 ## Developing

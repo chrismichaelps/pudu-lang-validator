@@ -11,3 +11,4 @@
 - 2026-09-27 — Add source-dependent severity and state to sync and async failures.
 - 2026-09-27 — Add composable result assertions and test validation entry points.
 - 2026-09-27 — Add typed cross-property equality and ordering checks.
+- 2026-09-27 — Reserve the decimal integer digit budget independently of observed fractional scale.
