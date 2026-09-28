@@ -16,3 +16,4 @@
 - 2026-09-28 — Add early synchronous and awaited prevalidation to async validators.
 - 2026-09-28 — Rewrite the package README around a checked example and stable API areas.
 - 2026-09-28 — Repair CI workflow parsing so checks run before release.
+- 2026-09-28 — Release 0.1.0 from `dev` to `main`.

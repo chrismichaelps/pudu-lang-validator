@@ -15,7 +15,7 @@ The bootstrap owns `src/PuduLangValidator/**`, `src/Main.pudu`, their mirrors, p
 
 ## Exact next action
 
-Confirm issue #26 restores a passing GitHub Actions check, then prepare release 0.1.0 from updated `dev`.
+Promote `dev` to `main` as release 0.1.0 (issue #25), then publish the tag and GitHub release.
 
 ## Referenced by
 
