@@ -75,6 +75,8 @@ Messages support `{PropertyName}`, `{PropertyPath}`, and `{PropertyValue}`. Buil
 
 `Rule.withSeverityFrom` and `Rule.withStateFrom` derive failure metadata from the source and selected value. Async rules offer root-based variants with the same names.
 
+`Async.withPreValidation` can return a result before any async rule runs. `Async.withPreValidationAsync` also accepts root context data and awaits the decision; returning `None` continues with the rules.
+
 `Comparison.equalToProperty` and `Ordering.greaterThanProperty` compare a selected value with another typed property on the same source. Their companion functions cover inequality and inclusive or exclusive ordering; each takes an explicit comparison path for failure messages.
 
 `Decimal.precisionScale` reserves `precision - scale` digits for the whole-number part, even when a value uses fewer fractional digits. Its trailing-zero flag controls whether fractional zeroes count toward the measured scale.

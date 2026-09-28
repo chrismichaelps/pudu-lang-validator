@@ -17,7 +17,11 @@ export type AsyncRule[T] = {
 }
 
 /** @Validation.Async.Validator — orders asynchronous and lifted rules */
-export type AsyncValidator[T] = { rules: Array[AsyncRule[T]], stop: Bool }
+export type AsyncValidator[T] = {
+  rules: Array[AsyncRule[T]],
+  stop: Bool,
+  preflight: async fn(T, Rule.ContextData) -> Option[Array[Validation.Failure]]
+}
 
 /// Build an asynchronous check for a typed property.
 export fn mustAsync[T, V](
@@ -200,7 +204,25 @@ export fn forEachValidatorAsync[T, V](
 }
 
 /// A validator with no asynchronous rules.
-export fn create[T]() -> AsyncValidator[T] { AsyncValidator{rules: [], stop: false} }
+export fn create[T]() -> AsyncValidator[T] {
+  AsyncValidator{rules: [], stop: false,
+    preflight: async fn(_root: T, _data: Rule.ContextData) -> Option[Array[Validation.Failure]] { None } }
+}
+
+/// Return Some failures to stop, including an empty success, or None to run rules.
+export fn withPreValidation[T](
+  validator: AsyncValidator[T], preflight: fn(T) -> Option[Array[Validation.Failure]]
+) -> AsyncValidator[T] {
+  withPreValidationAsync(validator,
+    async fn(root: T, _data: Rule.ContextData) -> Option[Array[Validation.Failure]] { preflight(root) })
+}
+
+/// Await root and context checks before selecting asynchronous rules.
+export fn withPreValidationAsync[T](
+  validator: AsyncValidator[T], preflight: async fn(T, Rule.ContextData) -> Option[Array[Validation.Failure]]
+) -> AsyncValidator[T] {
+  AsyncValidator{..validator, preflight: preflight}
+}
 
 /// Append an asynchronous rule in execution order.
 export fn add[T](validator: AsyncValidator[T], rule: AsyncRule[T]) -> AsyncValidator[T] {
@@ -228,6 +250,7 @@ export async fn validateAsyncWith[T](
 export async fn validateAsyncWithData[T](
   validator: &AsyncValidator[T], root: T, options: Validator.Options, data: Rule.ContextData
 ) -> Validation.ValidationResult {
+  if let Some(early) = validator.preflight(root, data).await { return Validation.fromFailures(early) }
   var failures: Array[Validation.Failure] = []
   for rule in validator.rules {
     if Validator.accepts(rule.name, &rule.ruleSets, &options) {

@@ -16,11 +16,15 @@ path: src/PuduLangValidator/Async.pudu
 
 `withSeverityFrom` and `withStateFrom` derive metadata from the root source for failures returned by an async rule. Their static counterparts use the same decoration path.
 
+`withPreValidation` installs a synchronous root callback. `withPreValidationAsync` installs an awaited callback that also receives immutable root context data. Both answer `None` to continue or `Some(failures)` to return immediately, including an empty successful result.
+
 ## Algorithm and edge cases
 
 Async root and child rules use [[Selection]] for the same path relations as synchronous validation.
 
 Selection runs once for an async rule. A false predicate emits one failure with the supplied path, message, and code. Array checks and filters are awaited in source order and retain original indices; unselected indices are skipped. Rules are awaited sequentially so failure order matches declaration order. `stopOnFirst` ends after the first failing rule. A rule's awaited work is cold until validation begins.
+
+Prevalidation runs once before rule selection and awaits completion before any rule begins. An early result skips all rule work. When a parent selects a child rule, that child runs its own prevalidation with the inherited context; its returned failure paths are prefixed by the parent exactly like ordinary child failures. Unselected child rules do not invoke their children. The latest installed prevalidation callback replaces earlier callbacks.
 
 A scalar async rule skips itself when only a descendant path is selected. Decorators preserve the context data unchanged; lifted rules receive the same data as native async rules.
 
@@ -44,6 +48,7 @@ MEDIUM — explicit task boundary with deterministic ordering.
 - **Q:** Run checks concurrently? **A:** Await in rule order. **Rationale:** failures and side effects remain predictable. **Rejected:** completion-order failures.
 - **Q:** Should context be mutable during async validation? **A:** Pass an immutable map through the run boundary. **Rationale:** nested and lifted rules observe one consistent request context. **Rejected:** per-rule global state.
 - **Q:** How should nested async work retain order? **A:** Await each child and array element sequentially. **Rationale:** failure order remains tied to source order. **Rejected:** merge by completion time.
+- **Q:** Can async prevalidation return a valid result? **A:** Yes; `Some([])` stops validation with no failures. **Rationale:** early acceptance is an explicit application choice. **Rejected:** forcing a fabricated error to stop.
 
 ## Referenced by
 
