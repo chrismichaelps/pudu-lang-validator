@@ -13,7 +13,7 @@ Adds `notEmpty`, `empty`, `length`, `minimumLength`, `maximumLength`, `matches`,
 
 Length bounds are rendered into failure messages when a check fails.
 
-Length checks attach `MinLength`, `MaxLength`, and `TotalLength` message arguments as applicable, including when the caller supplies a custom message.
+Length checks attach `MinLength`, `MaxLength`, and `TotalLength` message arguments as applicable, including when the caller supplies a custom message. Regex checks attach `RegularExpression` with the caller's original pattern text.
 
 Whitespace-only text is empty. Length counts Pudu Unicode scalar values. Bounds are inclusive. The email check requires one internal `@`; it does not claim deliverability. Card numbers permit digits with spaces and hyphens, require 12–19 digits, and pass a Luhn check; issuer or account status is outside scope. Enum names compare against an explicit list, optionally ignoring case. Regex matching uses `Std.Regex`; a budget exhaustion is a failed predicate.
 
@@ -29,6 +29,7 @@ MEDIUM — typed text predicates and one fallible build boundary.
 
 - **Q:** Reject invalid regex at validation time? **A:** Reject at rule construction. **Rationale:** configuration mistakes are distinct from bad input. **Rejected:** treating a malformed pattern as a property failure.
 - **Q:** Does length imply nonempty? **A:** No; only the requested interval is applied. **Rationale:** composition stays explicit. **Rejected:** implicit presence check.
+- **Q:** Should regex messages expose the compiled representation? **A:** Expose the caller's pattern text. **Rationale:** a message should identify the expression the caller configured. **Rejected:** rendering implementation internals.
 
 ## Referenced by
 

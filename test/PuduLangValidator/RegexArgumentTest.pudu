@@ -1,0 +1,43 @@
+/** @Test.Validation.RegexArgument.Suite — checks regex message metadata */
+module PuduLangValidator.RegexArgumentTest
+
+import Std.Test as Test
+import PuduLangValidator.Rule as Rule
+import PuduLangValidator.Rules.Text as TextRule
+import PuduLangValidator.Validator as Validator
+
+type Model = { text: Str }
+
+fn validator(pattern: Str) -> Validator.Validator[Model] {
+  let built = TextRule.matches(Rule.ruleFor("text", |model: Model| model.text), pattern)
+  match built {
+    case Ok(rule) => Validator.add(Validator.create(),
+      Rule.build(Rule.withMessage(rule, "Pattern \{RegularExpression\} rejected \{PropertyPath\}.")))
+    case Err(_problem) => panic("expected valid regex")
+  }
+}
+
+fn main() -> Int {
+  let substring = validator("ab")
+  let anchored = validator("^ab$")
+  let failed = Validator.validate(&substring, Model{text: "zz"})
+  let anchoredFailed = Validator.validate(&anchored, Model{text: "zab"})
+  let invalid = TextRule.matches(Rule.ruleFor("text", |model: Model| model.text), "[")
+  let invalidPattern = match invalid {
+    case Ok(_rule) => false
+    case Err(_problem) => true
+  }
+  let checks = Test.suite("RegexArgument", &[
+      Test.that("substring match succeeds", Validator.validate(&substring, Model{text: "zabz"}).isValid),
+      Test.that("substring mismatch fails", !failed.isValid),
+      Test.equals("pattern argument renders original text", &failed.errors[0].errorMessage,
+          &"Pattern ab rejected text."),
+      Test.equals("regex rule reports stable code", &failed.errors[0].errorCode, &"Matches"),
+      Test.that("anchored exact value succeeds", Validator.validate(&anchored, Model{text: "ab"}).isValid),
+      Test.that("anchored rule rejects surrounding text", !anchoredFailed.isValid),
+      Test.equals("anchored pattern remains literal in message", &anchoredFailed.errors[0].errorMessage,
+          &"Pattern ^ab$ rejected text."),
+      Test.that("invalid pattern fails rule construction", invalidPattern)
+    ])
+  Test.report(&Test.run(&checks))
+}

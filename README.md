@@ -71,6 +71,8 @@ Use `Validator.includeProperties(Validator.defaults(), ["orders[].sku"])` to val
 
 Messages support `{PropertyName}`, `{PropertyPath}`, and `{PropertyValue}`. Built-in rules expose their bounds and measured values as named arguments; `Rule.withArgument` and `Rule.withArgumentFrom` let application rules provide their own.
 
+`Text.matches` returns a typed error for an invalid pattern. A valid regex rule exposes `{RegularExpression}` to custom failure messages; callers can anchor a pattern when they need a whole-value match.
+
 `Rule.withSeverityFrom` and `Rule.withStateFrom` derive failure metadata from the source and selected value. Async rules offer root-based variants with the same names.
 
 `Comparison.equalToProperty` and `Ordering.greaterThanProperty` compare a selected value with another typed property on the same source. Their companion functions cover inequality and inclusive or exclusive ordering; each takes an explicit comparison path for failure messages.
