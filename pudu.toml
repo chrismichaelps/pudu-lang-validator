@@ -1,6 +1,6 @@
 [package]
 name = "@chrismichaelps/pudu-lang-validator"
-version = "0.1.0"
+version = "0.1.1"
 description = "Typed fluent validation rules for Pudu"
 license = "Apache-2.0"
 keywords = ["validation", "pudu", "rules"]

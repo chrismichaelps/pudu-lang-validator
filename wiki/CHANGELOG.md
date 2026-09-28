@@ -19,3 +19,4 @@
 - 2026-09-28 — Release 0.1.0 from `dev` to `main`.
 - 2026-09-28 — Pin clinic expectations: empty text satisfies any maximum, escaped braces match quantifiers, and async forEach checks every element while forEachWhere filters.
 - 2026-09-28 — Add the mutation harness (`tools/Mutate.pudu`) with a pull-request gate over the predicate layer.
+- 2026-09-28 — Bump to 0.1.1 with no API change: clinic pins, brace-escaping docs, and the mutation gate.

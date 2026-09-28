@@ -8,7 +8,7 @@ import Std.Io as Io
 fn main() -> Int {
   match Env.at(0) {
     case Some("--version") => {
-      let _written = Io.writeLine("pudu-lang-validator 0.1.0")
+      let _written = Io.writeLine("pudu-lang-validator 0.1.1")
       0
     }
     case None | Some("--help") => {
