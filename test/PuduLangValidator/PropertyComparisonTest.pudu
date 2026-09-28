@@ -1,0 +1,74 @@
+/** @Test.Validation.PropertyComparison.Suite — checks typed source comparisons */
+module PuduLangValidator.PropertyComparisonTest
+
+import Std.Sync as Sync
+import Std.Test as Test
+import PuduLangValidator.Result as Validation
+import PuduLangValidator.Rule as Rule
+import PuduLangValidator.Rules.Comparison as Comparison
+import PuduLangValidator.Rules.Ordering as Ordering
+import PuduLangValidator.Validator as Validator
+
+type Fields = { value: Int, bound: Int, text: Str, confirmation: Str }
+
+fn evaluate(builder: Rule.RuleBuilder[Fields, Int], source: Fields) -> Validation.ValidationResult {
+  Validator.validate(&Validator.add(Validator.create(), Rule.build(builder)), source)
+}
+
+fn valueRule() -> Rule.RuleBuilder[Fields, Int] {
+  Rule.ruleFor("value", |item: Fields| item.value)
+}
+
+fn main() -> Int {
+  let below = Fields{value: 4, bound: 5, text: "same", confirmation: "same"}
+  let equal = Fields{value: 5, bound: 5, text: "same", confirmation: "other"}
+  let above = Fields{value: 6, bound: 5, text: "same", confirmation: "other"}
+  let changed = Fields{value: 6, bound: 7, text: "same", confirmation: "other"}
+  let eqRule = Comparison.equalToProperty(valueRule(), "bound", |item: Fields| item.bound)
+  let neRule = Comparison.notEqualToProperty(valueRule(), "bound", |item: Fields| item.bound)
+  let gtRule = Ordering.greaterThanProperty(valueRule(), "bound", |item: Fields| item.bound)
+  let geRule = Ordering.greaterThanOrEqualToProperty(valueRule(), "bound", |item: Fields| item.bound)
+  let ltRule = Ordering.lessThanProperty(valueRule(), "bound", |item: Fields| item.bound)
+  let leRule = Ordering.lessThanOrEqualToProperty(valueRule(), "bound", |item: Fields| item.bound)
+  let textRule = Comparison.equalToProperty(
+    Rule.ruleFor("text", |item: Fields| item.text), "confirmation", |item: Fields| item.confirmation)
+  let eqFailure = evaluate(eqRule, below)
+  let changedFailure = evaluate(gtRule, changed)
+  let textFailure = Validator.validate(&Validator.add(Validator.create(), Rule.build(textRule)), equal)
+  let calls = Sync.counter(0)
+  let counted = Ordering.greaterThanProperty(valueRule(), "bound", fn(item: Fields) -> Int {
+      let _step = Sync.increment(&calls, 1)
+      if Sync.count(&calls) == Ok(1) { item.bound } else { panic("comparison selected twice") }
+    })
+  let countedFailure = evaluate(counted, below)
+  let overridden = evaluate(Rule.withArgument(eqRule, "ComparisonValue", "hidden"), below)
+  let checks = Test.suite("PropertyComparison", &[
+      Test.that("equal accepts matching source field", evaluate(eqRule, equal).isValid),
+      Test.that("equal rejects different source field", !eqFailure.isValid),
+      Test.equals("equal carries comparison value", &eqFailure.errors[0].errorMessage,
+          &"Value must equal 5 from bound."),
+      Test.that("not equal rejects matching source field", !evaluate(neRule, equal).isValid),
+      Test.that("not equal accepts different source field", evaluate(neRule, below).isValid),
+      Test.that("greater than rejects lower value", !evaluate(gtRule, below).isValid),
+      Test.that("greater than rejects equal value", !evaluate(gtRule, equal).isValid),
+      Test.that("greater than accepts higher value", evaluate(gtRule, above).isValid),
+      Test.that("greater or equal accepts boundary", evaluate(geRule, equal).isValid),
+      Test.that("greater or equal rejects below", !evaluate(geRule, below).isValid),
+      Test.that("less than accepts lower value", evaluate(ltRule, below).isValid),
+      Test.that("less than rejects boundary", !evaluate(ltRule, equal).isValid),
+      Test.that("less or equal accepts boundary", evaluate(leRule, equal).isValid),
+      Test.that("less or equal rejects above", !evaluate(leRule, above).isValid),
+      Test.equals("bound follows current source", &changedFailure.errors[0].errorMessage,
+          &"Value must be greater than 7 from bound."),
+      Test.that("generic equality accepts text", Validator.validate(
+            &Validator.add(Validator.create(), Rule.build(textRule)), below).isValid),
+      Test.equals("text comparison renders selected field", &textFailure.errors[0].errorMessage,
+          &"Value must equal other from confirmation."),
+      Test.equals("comparison selector runs once on failure", &Sync.count(&calls), &Ok(1)),
+      Test.equals("captured comparison value renders", &countedFailure.errors[0].errorMessage,
+          &"Value must be greater than 5 from bound."),
+      Test.equals("caller argument overrides captured value", &overridden.errors[0].errorMessage,
+          &"Value must equal hidden from bound.")
+    ])
+  Test.report(&Test.run(&checks))
+}

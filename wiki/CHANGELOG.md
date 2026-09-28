@@ -10,3 +10,4 @@
 - 2026-09-27 — Add failure message arguments to typed checks and built-in bounds.
 - 2026-09-27 — Add source-dependent severity and state to sync and async failures.
 - 2026-09-27 — Add composable result assertions and test validation entry points.
+- 2026-09-27 — Add typed cross-property equality and ordering checks.

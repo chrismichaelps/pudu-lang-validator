@@ -11,6 +11,8 @@ path: src/PuduLangValidator/Rule.pudu
 
 `withArgument` and `withArgumentFrom` add named message values to the latest check. A repeated name replaces its earlier value. Argument factories receive the source and property only when that check fails.
 
+`mustWithArguments` adds a check that returns `None` on success or `Some(arguments)` on failure. These arguments are captured by the predicate and reused for the emitted message. An explicit `withArgument` or `withArgumentFrom` on that check takes precedence when names overlap.
+
 `withSeverityFrom` and `withStateFrom` compute metadata from the source and property for the latest check. Static setters clear an earlier callback; a later callback replaces an earlier static value.
 
 ## Algorithm and edge cases
@@ -20,6 +22,8 @@ Scalar property selection uses [[Selection]] so empty bracket patterns match con
 Message arguments render alongside built-in property placeholders. A custom message may use named arguments supplied by its check; arguments on another check do not leak into it. Argument names representing built-in property placeholders are reserved.
 
 Rendering scans the chosen template once. Replacement text is appended literally and is not reparsed for more placeholders. An argument factory runs only if its name occurs in the chosen template.
+
+The check returns its failure decision and any captured argument values together. A source selector needed for both comparison and message formatting can therefore be evaluated once per check. A false condition skips the check and all of its argument work.
 
 Metadata callbacks run only for emitted failures, after conditions and the predicate. Each check owns its own callbacks, so later checks cannot change earlier failures.
 
@@ -41,6 +45,7 @@ DEEP — carries the typed property boundary, ordered check semantics, and metad
 - **Q:** Should `when` affect all earlier checks? **A:** Yes; `whenCurrent` narrows it. **Rationale:** the two scopes must be explicit and testable. **Rejected:** silently treating `when` as current-only.
 - **Q:** If no check exists, does metadata error? **A:** Return the same builder. **Rationale:** preserves a total functional API. **Rejected:** panic.
 - **Q:** When are dynamic message arguments computed? **A:** Only after the attached check fails. **Rationale:** successful validation avoids formatting work. **Rejected:** eager argument evaluation.
+- **Q:** How can a predicate reuse a value in its failure message? **A:** Return it as a captured argument with the failure decision. **Rationale:** the compared value and rendered value must agree even for a changing selector. **Rejected:** invoking the selector again while rendering.
 - **Q:** Which metadata setter wins? **A:** The latest static or computed setter on one check. **Rationale:** fluent updates have a predictable order. **Rejected:** combining conflicting severities or states.
 
 ## Referenced by
